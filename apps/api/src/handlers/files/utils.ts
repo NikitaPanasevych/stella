@@ -98,6 +98,33 @@ export const deleteS3Objects = async ({
   return await deleteS3Keys(keys);
 };
 
+type CopyS3ObjectOptions = {
+  sourceKey: string;
+  targetKey: string;
+};
+
+export const copyS3Object = async ({
+  sourceKey,
+  targetKey,
+}: CopyS3ObjectOptions): Promise<Result<void, S3Error>> => {
+  const s3 = getS3();
+  const result = await Result.tryPromise(
+    async () => await s3.write(targetKey, s3.file(sourceKey)),
+  );
+
+  if (Result.isError(result)) {
+    return Result.err(
+      new S3Error({
+        message: `Failed to copy S3 object ${sourceKey} -> ${targetKey}`,
+        key: targetKey,
+        cause: result.error,
+      }),
+    );
+  }
+
+  return Result.ok();
+};
+
 export const deleteS3Keys = async (
   keys: string[],
 ): Promise<Result<void, S3Error>> => {

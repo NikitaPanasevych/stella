@@ -6,14 +6,12 @@ import type { Static } from "elysia";
 import type { SafeDb } from "@/api/db";
 import { entities, entityVersions, fields, workspaces } from "@/api/db/schema";
 import type { FieldContent } from "@/api/db/schema-validators";
-import {
-  getFolderSubtree,
-  resolveEntityName,
-} from "@/api/handlers/entities/duplicate";
+import { getFolderSubtree } from "@/api/handlers/entities/duplicate";
 import type { EntitySnapshot } from "@/api/handlers/entities/duplicate";
 import {
   extractFileRefs,
   reconcileProperties,
+  resolveTargetEntityName,
   rewriteFileContent,
 } from "@/api/handlers/entities/relocation-utils";
 import type {
@@ -286,11 +284,18 @@ const moveToMatterHandler = async function* ({
     for (const copy of plan.fileCopies) {
       const result = await copyS3Object(copy);
       if (Result.isError(result)) {
+        captureError(result.error, {
+          sourceKey: copy.sourceKey,
+          targetKey: copy.targetKey,
+          sourceWorkspaceId,
+          targetWorkspaceId,
+        });
         await rollbackS3(copiedKeys);
         return Result.err(
           new HandlerError({
             status: 500,
-            message: "Failed to copy file content to target matter",
+            message: `Failed to copy file content (${copy.sourceKey} -> ${copy.targetKey})`,
+            cause: result.error,
           }),
         );
       }
@@ -335,12 +340,24 @@ const moveToMatterHandler = async function* ({
         };
       }
 
-      const rootName = await resolveEntityName({
-        tx,
-        workspaceId: targetWorkspaceId,
-        parentId: null,
-        name: rootPlan.source.name,
-      });
+      const { renamed: rootRenamed, value: rootName } =
+        await resolveTargetEntityName({
+          tx,
+          targetWorkspaceId,
+          parentId: null,
+          name: rootPlan.source.name,
+        });
+
+      if (rootRenamed) {
+        rootPlan.rewrittenFields = rootPlan.rewrittenFields.map((field) =>
+          field.content.type === "file"
+            ? {
+                ...field,
+                content: { ...field.content, fileName: rootName },
+              }
+            : field,
+        );
+      }
 
       const rootSourceId = rootPlan.source.id;
       const newParentByPlan = new Map<

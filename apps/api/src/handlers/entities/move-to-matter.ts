@@ -1,5 +1,5 @@
 import { Result } from "better-result";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { t } from "elysia";
 import type { Static } from "elysia";
 
@@ -12,11 +12,19 @@ import {
 } from "@/api/handlers/entities/duplicate";
 import type { EntitySnapshot } from "@/api/handlers/entities/duplicate";
 import {
+  extractFileRefs,
   reconcileProperties,
   rewriteFileContent,
 } from "@/api/handlers/entities/relocation-utils";
-import type { FileCopyPlan } from "@/api/handlers/entities/relocation-utils";
-import { copyS3Object, deleteS3Keys } from "@/api/handlers/files/utils";
+import type {
+  FileCopyPlan,
+  FileRef,
+} from "@/api/handlers/entities/relocation-utils";
+import {
+  copyS3Object,
+  deleteS3Keys,
+  deleteS3Objects,
+} from "@/api/handlers/files/utils";
 import { captureError } from "@/api/lib/analytics";
 import { createSafeHandler } from "@/api/lib/api-handlers";
 import type { HandlerConfig } from "@/api/lib/api-handlers";
@@ -34,13 +42,14 @@ import { allocateEntityStamp } from "@/api/lib/document-counter";
 import { HandlerError } from "@/api/lib/errors/tagged-errors";
 import { LIMITS } from "@/api/lib/limits";
 import { processExtraction } from "@/api/lib/search/process-extraction";
+import { getSearchProvider } from "@/api/lib/search/provider";
 
-const copyToMatterBodySchema = t.Object({
+const moveToMatterBodySchema = t.Object({
   entityId: tSafeId("entity"),
   targetWorkspaceId: tSafeId("workspace"),
 });
 
-type CopyToMatterBody = Static<typeof copyToMatterBodySchema>;
+type MoveToMatterBody = Static<typeof moveToMatterBodySchema>;
 
 type EntityCopyPlan = {
   source: EntitySnapshot;
@@ -50,17 +59,17 @@ type EntityCopyPlan = {
   fileCopies: FileCopyPlan[];
 };
 
-type CopyToMatterHandlerOptions = {
+type MoveToMatterHandlerOptions = {
   safeDb: SafeDb;
   accessibleWorkspaces: AccessibleWorkspace[];
   organizationId: SafeId<"organization">;
   sourceWorkspaceId: SafeId<"workspace">;
   userId: SafeId<"user">;
   request: Request;
-  body: CopyToMatterBody;
+  body: MoveToMatterBody;
 };
 
-const copyToMatterHandler = async function* ({
+const moveToMatterHandler = async function* ({
   safeDb,
   accessibleWorkspaces,
   organizationId,
@@ -68,7 +77,7 @@ const copyToMatterHandler = async function* ({
   userId,
   request,
   body,
-}: CopyToMatterHandlerOptions) {
+}: MoveToMatterHandlerOptions) {
   const { entityId: sourceEntityId, targetWorkspaceId } = body;
 
   if (targetWorkspaceId === sourceWorkspaceId) {
@@ -94,7 +103,13 @@ const copyToMatterHandler = async function* ({
           id: { eq: sourceEntityId },
           workspaceId: { eq: sourceWorkspaceId },
         },
-        columns: { id: true, kind: true, name: true, parentId: true },
+        columns: {
+          id: true,
+          kind: true,
+          name: true,
+          parentId: true,
+          readOnly: true,
+        },
         with: {
           currentVersion: {
             columns: { id: true },
@@ -110,6 +125,12 @@ const copyToMatterHandler = async function* ({
   if (!source) {
     return Result.err(
       new HandlerError({ status: 404, message: "Entity not found" }),
+    );
+  }
+
+  if (source.readOnly) {
+    return Result.err(
+      new HandlerError({ status: 409, message: "Entity is read-only" }),
     );
   }
 
@@ -143,6 +164,25 @@ const copyToMatterHandler = async function* ({
     );
   }
 
+  const subtreeIds = subtree.map((entity) => entity.id);
+  const readOnlyDescendants = yield* Result.await(
+    safeDb((tx) =>
+      tx.query.entities.findMany({
+        where: {
+          id: { in: subtreeIds },
+          workspaceId: { eq: sourceWorkspaceId },
+          readOnly: { eq: true },
+        },
+        columns: { id: true },
+      }),
+    ),
+  );
+  if (readOnlyDescendants.length > 0) {
+    return Result.err(
+      new HandlerError({ status: 409, message: "Entity is read-only" }),
+    );
+  }
+
   const sourceFieldList = subtree.flatMap(
     (entity) => entity.currentVersion?.fields ?? [],
   );
@@ -168,11 +208,7 @@ const copyToMatterHandler = async function* ({
 
   const sourcePropertiesUsed = sourceProperties
     .filter((p) => sourcePropertyIds.has(p.id))
-    .map((p) => ({
-      id: p.id,
-      name: p.name,
-      contentType: p.content.type,
-    }));
+    .map((p) => ({ id: p.id, name: p.name, contentType: p.content.type }));
 
   const { propertyMap, droppedFields, hasFileFieldButNoFileProperty } =
     reconcileProperties({
@@ -190,13 +226,14 @@ const copyToMatterHandler = async function* ({
       new HandlerError({
         status: 400,
         message:
-          "Target matter has no matching file property; add one before copying",
+          "Target matter has no matching file property; add one before moving",
       }),
     );
   }
 
   const plans: EntityCopyPlan[] = [];
   const idMap = new Map<SafeId<"entity">, SafeId<"entity">>();
+  const sourceFileRefs: FileRef[] = [];
 
   for (const entity of subtree) {
     const newEntityId = createSafeId<"entity">();
@@ -207,6 +244,8 @@ const copyToMatterHandler = async function* ({
     const rewrittenFields: EntityCopyPlan["rewrittenFields"] = [];
 
     for (const field of entity.currentVersion?.fields ?? []) {
+      sourceFileRefs.push(...extractFileRefs(field.content));
+
       const targetPropertyId = propertyMap.get(field.propertyId);
       if (!targetPropertyId) {
         continue;
@@ -259,9 +298,15 @@ const copyToMatterHandler = async function* ({
     }
   }
 
-  const auditContext = createAuditContext({
+  const targetAuditContext = createAuditContext({
     organizationId,
     workspaceId: targetWorkspaceId,
+    userId,
+    request,
+  });
+  const sourceAuditContext = createAuditContext({
+    organizationId,
+    workspaceId: sourceWorkspaceId,
     userId,
     request,
   });
@@ -286,7 +331,7 @@ const copyToMatterHandler = async function* ({
         return {
           ok: false as const,
           status: 500 as const,
-          message: "Empty copy plan",
+          message: "Empty move plan",
         };
       }
 
@@ -355,14 +400,34 @@ const copyToMatterHandler = async function* ({
         }
       }
 
+      const deletedSource = await tx
+        .delete(entities)
+        .where(
+          and(
+            eq(entities.workspaceId, sourceWorkspaceId),
+            inArray(entities.id, subtreeIds),
+          ),
+        )
+        .returning({
+          id: entities.id,
+          kind: entities.kind,
+          name: entities.name,
+          parentId: entities.parentId,
+        });
+
+      const activityNow = new Date();
       await tx
         .update(workspaces)
-        .set({ lastActivityAt: new Date() })
+        .set({ lastActivityAt: activityNow })
         .where(eq(workspaces.id, targetWorkspaceId));
+      await tx
+        .update(workspaces)
+        .set({ lastActivityAt: activityNow })
+        .where(eq(workspaces.id, sourceWorkspaceId));
 
       await writeAuditLog(
         plans.map((plan) => ({
-          ...auditContext,
+          ...targetAuditContext,
           action: AUDIT_ACTION.CREATE,
           resourceType: AUDIT_RESOURCE_TYPE.ENTITY,
           resourceId: plan.newEntityId,
@@ -381,10 +446,31 @@ const copyToMatterHandler = async function* ({
         tx,
       );
 
+      await writeAuditLog(
+        deletedSource.map((entity) => ({
+          ...sourceAuditContext,
+          action: AUDIT_ACTION.DELETE,
+          resourceType: AUDIT_RESOURCE_TYPE.ENTITY,
+          resourceId: entity.id,
+          changes: {
+            deleted: {
+              old: {
+                kind: entity.kind,
+                name: entity.name,
+                parentId: entity.parentId,
+              },
+              new: null,
+            },
+          },
+        })),
+        tx,
+      );
+
       return {
         ok: true as const,
         rootEntityId: rootPlan.newEntityId,
         entityIds: plans.map((plan) => plan.newEntityId),
+        deletedSourceIds: deletedSource.map((entity) => entity.id),
       };
     }),
   );
@@ -396,6 +482,21 @@ const copyToMatterHandler = async function* ({
     );
   }
 
+  if (sourceFileRefs.length > 0) {
+    const deleteResult = await deleteS3Objects({
+      fileRows: sourceFileRefs,
+      organizationId,
+      workspaceId: sourceWorkspaceId,
+    });
+    if (Result.isError(deleteResult)) {
+      captureError(deleteResult.error);
+    }
+  }
+
+  const provider = getSearchProvider();
+  for (const sourceId of txResult.deletedSourceIds) {
+    provider.removeEntity(sourceId).catch(captureError);
+  }
   for (const entityId of txResult.entityIds) {
     processExtraction(entityId).catch(captureError);
   }
@@ -417,11 +518,11 @@ const rollbackS3 = async (keys: string[]) => {
 };
 
 const config = {
-  permissions: { entity: ["create"] },
-  body: copyToMatterBodySchema,
+  permissions: { entity: ["update"] },
+  body: moveToMatterBodySchema,
 } satisfies HandlerConfig;
 
-const copyToMatter = createSafeHandler(
+const moveToMatter = createSafeHandler(
   config,
   async function* ({
     safeDb,
@@ -432,7 +533,7 @@ const copyToMatter = createSafeHandler(
     request,
     body,
   }) {
-    return yield* copyToMatterHandler({
+    return yield* moveToMatterHandler({
       safeDb,
       accessibleWorkspaces,
       organizationId: session.activeOrganizationId,
@@ -444,4 +545,4 @@ const copyToMatter = createSafeHandler(
   },
 );
 
-export default copyToMatter;
+export default moveToMatter;

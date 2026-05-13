@@ -17,6 +17,7 @@ import duplicateEntity from "@/api/handlers/entities/duplicate";
 import listFiles from "@/api/handlers/entities/list-files";
 import listFolders from "@/api/handlers/entities/list-folders";
 import moveEntity from "@/api/handlers/entities/move";
+import moveToMatter from "@/api/handlers/entities/move-to-matter";
 import openDesktopEditSession from "@/api/handlers/entities/open-desktop-edit-session";
 import organizeSuggestions from "@/api/handlers/entities/organize-suggestions";
 import readEntities from "@/api/handlers/entities/read";
@@ -134,6 +135,10 @@ export const entitiesRoute = new Elysia({
   })
   .post("/copy-to-matter", copyToMatter.handler, {
     body: copyToMatter.config.body,
+    invalidateQuery: true,
+  })
+  .post("/move-to-matter", moveToMatter.handler, {
+    body: moveToMatter.config.body,
     invalidateQuery: true,
   })
   .post("/check-stamp", checkStamp.handler, {

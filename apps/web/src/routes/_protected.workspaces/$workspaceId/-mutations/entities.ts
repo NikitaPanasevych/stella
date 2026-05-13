@@ -113,6 +113,98 @@ export const useMoveEntity = () => {
   });
 };
 
+type RelocateEntityVars = {
+  sourceWorkspaceId: string;
+  targetWorkspaceId: string;
+  entityId: string;
+};
+
+export const useCopyEntityToMatter = () => {
+  const analytics = useAnalytics();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      sourceWorkspaceId,
+      targetWorkspaceId,
+      entityId,
+    }: RelocateEntityVars) => {
+      const response = await api
+        .entities({ workspaceId: toSafeId<"workspace">(sourceWorkspaceId) })
+        ["copy-to-matter"].post({
+          queryKey: entitiesKeys.all(sourceWorkspaceId),
+          entityId: toSafeId<"entity">(entityId),
+          targetWorkspaceId: toSafeId<"workspace">(targetWorkspaceId),
+        });
+
+      if (response.error) {
+        throw toAPIError(response.error);
+      }
+
+      return response.data;
+    },
+    onSuccess: async (_data, { sourceWorkspaceId, targetWorkspaceId }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: entitiesKeys.all(targetWorkspaceId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: workspacesKeys.overview(sourceWorkspaceId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: workspacesKeys.overview(targetWorkspaceId),
+        }),
+      ]);
+    },
+    onError: (error) => {
+      analytics.captureError(error);
+    },
+  });
+};
+
+export const useMoveEntityToMatter = () => {
+  const analytics = useAnalytics();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      sourceWorkspaceId,
+      targetWorkspaceId,
+      entityId,
+    }: RelocateEntityVars) => {
+      const response = await api
+        .entities({ workspaceId: toSafeId<"workspace">(sourceWorkspaceId) })
+        ["move-to-matter"].post({
+          queryKey: entitiesKeys.all(sourceWorkspaceId),
+          entityId: toSafeId<"entity">(entityId),
+          targetWorkspaceId: toSafeId<"workspace">(targetWorkspaceId),
+        });
+
+      if (response.error) {
+        throw toAPIError(response.error);
+      }
+
+      return response.data;
+    },
+    onSuccess: async (_data, { sourceWorkspaceId, targetWorkspaceId }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: entitiesKeys.all(targetWorkspaceId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: workspacesKeys.overview(sourceWorkspaceId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: workspacesKeys.overview(targetWorkspaceId),
+        }),
+      ]);
+    },
+    onError: (error) => {
+      analytics.captureError(error);
+    },
+  });
+};
+
 type RenameEntityVars = {
   workspaceId: string;
   entityId: string;

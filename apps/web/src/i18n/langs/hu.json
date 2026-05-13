@@ -2063,6 +2063,15 @@
     "referenceFormatWarning": "Nem egyezik a szervezeti formátummal.",
     "referencePlaceholder": "pl. 2024/001",
     "referenceTaken": "Ez a hivatkozási szám már használatban van",
+    "relocate": {
+      "copyToMatter": "Copy to matter…",
+      "droppedFieldsWarning": "{count, plural, one {# field was dropped because the target matter has no matching property} other {# fields were dropped because the target matter has no matching property}}",
+      "moveToMatter": "Move to matter…",
+      "noFileProperty": "Target matter has no file property; add one before relocating",
+      "noOtherMatters": "No other matters available",
+      "successCopy": "Copied to \"{name}\"",
+      "successMove": "Moved to \"{name}\""
+    },
     "sections": {
       "members": "Tagok",
       "parties": "Felek"

@@ -2066,6 +2066,15 @@ type Messages = {
     "referenceFormatWarning": "Doesn't match the organization format.";
     "referencePlaceholder": "e.g. 2024/001";
     "referenceTaken": "This reference number is already in use";
+    "relocate": {
+      "copyToMatter": "Copy to matter…";
+      "droppedFieldsWarning": "{count, plural, one {# field was dropped because the target matter has no matching property} other {# fields were dropped because the target matter has no matching property}}";
+      "moveToMatter": "Move to matter…";
+      "noFileProperty": "Target matter has no file property; add one before relocating";
+      "noOtherMatters": "No other matters available";
+      "successCopy": "Copied to \"{name}\"";
+      "successMove": "Moved to \"{name}\"";
+    };
     "sections": {
       "members": "Members";
       "parties": "Parties";

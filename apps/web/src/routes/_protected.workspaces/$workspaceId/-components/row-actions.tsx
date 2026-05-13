@@ -1,13 +1,16 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { Result } from "better-result";
 import {
   ArchiveIcon,
+  ArrowRightFromLineIcon,
   CopyIcon,
   DownloadIcon,
   EllipsisVerticalIcon,
   EyeIcon,
   FileOutputIcon,
   FolderPlusIcon,
+  FolderSymlinkIcon,
   LaptopIcon,
   LockOpenIcon,
   Maximize2Icon,
@@ -62,8 +65,10 @@ import { getPdfDownloadFileName } from "@/routes/_protected.workspaces/$workspac
 import { downloadFile } from "@/routes/_protected.workspaces/$workspaceId/-components/utils";
 import { useEntitiesCountLimit } from "@/routes/_protected.workspaces/$workspaceId/-hooks/use-limits";
 import {
+  useCopyEntityToMatter,
   useCreateEntities,
   useDeleteEntities,
+  useMoveEntityToMatter,
 } from "@/routes/_protected.workspaces/$workspaceId/-mutations/entities";
 import { entitiesKeys } from "@/routes/_protected.workspaces/$workspaceId/-queries/entities";
 import { useIsWorkflowRunning } from "@/routes/_protected.workspaces/$workspaceId/-queries/workspace";
@@ -72,6 +77,9 @@ import {
   getEntityName,
   getFirstFile,
 } from "@/routes/_protected.workspaces/$workspaceId/-utils";
+import { workspacesOptions } from "@/routes/_protected.workspaces/-queries";
+
+const protectedRouteApi = getRouteApi("/_protected");
 
 export type VirtualAnchor = {
   getBoundingClientRect: () => DOMRect;
@@ -115,6 +123,16 @@ export const RowActions = ({
   const t = useTranslations();
   const navigate = useNavigate();
   const deleteEntities = useDeleteEntities();
+  const copyEntityToMatter = useCopyEntityToMatter();
+  const moveEntityToMatter = useMoveEntityToMatter();
+  const activeOrganizationId = protectedRouteApi.useRouteContext({
+    select: (ctx) => ctx.user.activeOrganizationId,
+  });
+  const { data: workspacesData } = useQuery(
+    workspacesOptions(activeOrganizationId),
+  );
+  const otherMatters =
+    workspacesData?.workspaces.filter((w) => w.id !== workspaceId) ?? [];
   const requestChatAbout = useRequestChatAbout(workspaceId);
   const file = getFirstFile(entity);
   const name = getEntityName(entity);
@@ -423,6 +441,48 @@ export const RowActions = ({
     }
   };
 
+  const handleRelocate = (
+    mode: "copy" | "move",
+    targetWorkspaceId: string,
+    targetName: string,
+  ) => {
+    const mutation = mode === "copy" ? copyEntityToMatter : moveEntityToMatter;
+    mutation.mutate(
+      {
+        sourceWorkspaceId: workspaceId,
+        targetWorkspaceId,
+        entityId: entity.entityId,
+      },
+      {
+        onSuccess: (data) => {
+          stellaToast.add({
+            title:
+              mode === "copy"
+                ? t("workspaces.relocate.successCopy", { name: targetName })
+                : t("workspaces.relocate.successMove", { name: targetName }),
+            ...(data.droppedFields > 0
+              ? {
+                  description: t("workspaces.relocate.droppedFieldsWarning", {
+                    count: data.droppedFields,
+                  }),
+                  type: "warning" as const,
+                }
+              : { type: "success" as const }),
+          });
+        },
+        onError: (error) => {
+          stellaToast.add({
+            title: t("errors.actionFailed"),
+            ...(error instanceof Error && error.message
+              ? { description: error.message }
+              : {}),
+            type: "error",
+          });
+        },
+      },
+    );
+  };
+
   const handleDelete = () => {
     const ids = isBulk
       ? selectedEntities.map((e) => e.entityId)
@@ -606,6 +666,58 @@ export const RowActions = ({
               <CopyIcon />
               {t("common.duplicate")}
             </MenuItem>
+            {!isBulk && (
+              <>
+                <MenuSub>
+                  <MenuSubTrigger>
+                    <FolderSymlinkIcon />
+                    {t("workspaces.relocate.copyToMatter")}
+                  </MenuSubTrigger>
+                  <MenuSubPopup>
+                    {otherMatters.length === 0 ? (
+                      <MenuItem disabled>
+                        {t("workspaces.relocate.noOtherMatters")}
+                      </MenuItem>
+                    ) : (
+                      otherMatters.map((matter) => (
+                        <MenuItem
+                          key={matter.id}
+                          onClick={() => {
+                            handleRelocate("copy", matter.id, matter.name);
+                          }}
+                        >
+                          {matter.name}
+                        </MenuItem>
+                      ))
+                    )}
+                  </MenuSubPopup>
+                </MenuSub>
+                <MenuSub>
+                  <MenuSubTrigger>
+                    <ArrowRightFromLineIcon />
+                    {t("workspaces.relocate.moveToMatter")}
+                  </MenuSubTrigger>
+                  <MenuSubPopup>
+                    {otherMatters.length === 0 ? (
+                      <MenuItem disabled>
+                        {t("workspaces.relocate.noOtherMatters")}
+                      </MenuItem>
+                    ) : (
+                      otherMatters.map((matter) => (
+                        <MenuItem
+                          key={matter.id}
+                          onClick={() => {
+                            handleRelocate("move", matter.id, matter.name);
+                          }}
+                        >
+                          {matter.name}
+                        </MenuItem>
+                      ))
+                    )}
+                  </MenuSubPopup>
+                </MenuSub>
+              </>
+            )}
 
             <MenuSeparator />
 

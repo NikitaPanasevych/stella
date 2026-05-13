@@ -50,12 +50,12 @@ type ResolveEntityNameProps = {
   name: string;
 };
 
-type EntityFieldSnapshot = {
+export type EntityFieldSnapshot = {
   propertyId: SafeId<"property">;
   content: FieldContent;
 };
 
-type EntitySnapshot = {
+export type EntitySnapshot = {
   id: SafeId<"entity">;
   kind: EntityKind;
   name: string;
@@ -82,7 +82,7 @@ type DuplicatedEntity = {
  * next number so re-duplicating "Report_1" still increments
  * from the highest sibling, not from the stripped base.
  */
-const resolveEntityName = async ({
+export const resolveEntityName = async ({
   tx,
   workspaceId,
   parentId,
@@ -136,7 +136,7 @@ const resolveEntityName = async ({
 
 const getEffectiveName = (entity: EntitySnapshot): string => entity.name;
 
-const getFolderSubtree = (
+export const getFolderSubtree = (
   allEntities: EntitySnapshot[],
   rootId: SafeId<"entity">,
 ) => {

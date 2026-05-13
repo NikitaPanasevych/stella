@@ -4,6 +4,7 @@ import { rateLimit } from "elysia-rate-limit";
 import checkStamp from "@/api/handlers/entities/check-stamp";
 import clipEndpoint from "@/api/handlers/entities/clip";
 import compareVersions from "@/api/handlers/entities/compare-versions";
+import copyToMatter from "@/api/handlers/entities/copy-to-matter";
 import createEntities from "@/api/handlers/entities/create";
 import createFromLegalSource from "@/api/handlers/entities/create-from-legal-source";
 import deleteEntities from "@/api/handlers/entities/delete";
@@ -129,6 +130,10 @@ export const entitiesRoute = new Elysia({
   })
   .post("/duplicate", duplicateEntity.handler, {
     body: duplicateEntity.config.body,
+    invalidateQuery: true,
+  })
+  .post("/copy-to-matter", copyToMatter.handler, {
+    body: copyToMatter.config.body,
     invalidateQuery: true,
   })
   .post("/check-stamp", checkStamp.handler, {

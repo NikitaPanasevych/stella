@@ -31,6 +31,12 @@ void mock.module("@/api/lib/s3", () => ({
   }),
 }));
 
+const hasPermissionMock = mock(async () => ({ success: true }));
+
+void mock.module("@/api/lib/auth", () => ({
+  getAuth: () => ({ api: { hasPermission: hasPermissionMock } }),
+}));
+
 const { default: copyToMatter } = await import("./copy-to-matter");
 
 const organizationId = toSafeId<"organization">("organization_1");

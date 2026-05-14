@@ -37,6 +37,12 @@ void mock.module("@/api/lib/s3", () => ({
   }),
 }));
 
+const hasPermissionMock = mock(async () => ({ success: true }));
+
+void mock.module("@/api/lib/auth", () => ({
+  getAuth: () => ({ api: { hasPermission: hasPermissionMock } }),
+}));
+
 const { default: moveToMatter } = await import("./move-to-matter");
 
 const organizationId = toSafeId<"organization">("organization_1");
@@ -223,7 +229,19 @@ describe("move entity to another matter", () => {
         $count: async () => 0,
         select: () => ({
           from: () => ({
-            where: async () => [],
+            // Returns a Promise with a `.for` method attached so the
+            // handler can either `await ...where(...)` (resolves to [])
+            // or call `.for("update")` (resolves to the locked source
+            // row). An async function here would wrap the returned
+            // promise and hide `.for`, so the rule is disabled.
+            // eslint-disable-next-line typescript/promise-function-async
+            where: () => {
+              const promise: Promise<unknown[]> & {
+                for?: () => Promise<{ id: SafeId<"entity"> }[]>;
+              } = Promise.resolve([]);
+              promise.for = async () => [{ id: documentId }];
+              return promise;
+            },
           }),
         }),
         insert: (table: unknown) => ({

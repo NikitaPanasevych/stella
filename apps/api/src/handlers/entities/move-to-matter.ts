@@ -32,6 +32,7 @@ import {
   createAuditContext,
   writeAuditLog,
 } from "@/api/lib/audit-log";
+import { getAuth } from "@/api/lib/auth";
 import type { AccessibleWorkspace } from "@/api/lib/auth";
 import { createSafeId } from "@/api/lib/branded-types";
 import type { SafeId } from "@/api/lib/branded-types";
@@ -64,6 +65,7 @@ type MoveToMatterHandlerOptions = {
   sourceWorkspaceId: SafeId<"workspace">;
   userId: SafeId<"user">;
   request: Request;
+  server: Parameters<typeof createAuditContext>[0]["server"];
   body: MoveToMatterBody;
 };
 
@@ -74,6 +76,7 @@ const moveToMatterHandler = async function* ({
   sourceWorkspaceId,
   userId,
   request,
+  server,
   body,
 }: MoveToMatterHandlerOptions) {
   const { entityId: sourceEntityId, targetWorkspaceId } = body;
@@ -91,6 +94,19 @@ const moveToMatterHandler = async function* ({
   if (!target || target.status !== "active") {
     return Result.err(
       new HandlerError({ status: 404, message: "Target matter not found" }),
+    );
+  }
+
+  const targetPermission = await getAuth().api.hasPermission({
+    headers: request.headers,
+    body: { permissions: { entity: ["create"] } },
+  });
+  if (!targetPermission.success) {
+    return Result.err(
+      new HandlerError({
+        status: 403,
+        message: "Not allowed to create entities in target matter",
+      }),
     );
   }
 
@@ -190,17 +206,18 @@ const moveToMatterHandler = async function* ({
   );
 
   const [sourceProperties, targetProperties] = yield* Result.await(
-    safeDb( async (tx) =>
-      Promise.all([
-        tx.query.properties.findMany({
-          where: { workspaceId: { eq: sourceWorkspaceId } },
-          columns: { id: true, name: true, content: true },
-        }),
-        tx.query.properties.findMany({
-          where: { workspaceId: { eq: targetWorkspaceId } },
-          columns: { id: true, name: true, content: true },
-        }),
-      ]),
+    safeDb(
+      async (tx) =>
+        await Promise.all([
+          tx.query.properties.findMany({
+            where: { workspaceId: { eq: sourceWorkspaceId } },
+            columns: { id: true, name: true, content: true },
+          }),
+          tx.query.properties.findMany({
+            where: { workspaceId: { eq: targetWorkspaceId } },
+            columns: { id: true, name: true, content: true },
+          }),
+        ]),
     ),
   );
 
@@ -308,16 +325,41 @@ const moveToMatterHandler = async function* ({
     workspaceId: targetWorkspaceId,
     userId,
     request,
+    server,
   });
   const sourceAuditContext = createAuditContext({
     organizationId,
     workspaceId: sourceWorkspaceId,
     userId,
     request,
+    server,
   });
 
   const txResult = yield* Result.await(
     safeDb(async (tx) => {
+      // Lock the source subtree for the duration of the tx so a
+      // concurrent move/delete cannot remove rows between here and
+      // the delete below. If the subtree shrank since we planned
+      // the move, bail with a 409 before any target-side writes.
+      const lockedSource = await tx
+        .select({ id: entities.id })
+        .from(entities)
+        .where(
+          and(
+            eq(entities.workspaceId, sourceWorkspaceId),
+            inArray(entities.id, subtreeIds),
+          ),
+        )
+        .for("update");
+
+      if (lockedSource.length !== subtreeIds.length) {
+        return {
+          ok: false as const,
+          status: 409 as const,
+          message: "Source entity changed during move; retry",
+        };
+      }
+
       const targetEntityCount = await tx.$count(
         entities,
         eq(entities.workspaceId, targetWorkspaceId),
@@ -349,8 +391,12 @@ const moveToMatterHandler = async function* ({
         });
 
       if (rootRenamed) {
+        // Only sync the file field whose fileName was in lockstep with
+        // the source entity name (the canonical primary content). Other
+        // file fields — attachments, custom labels — are left alone.
         rootPlan.rewrittenFields = rootPlan.rewrittenFields.map((field) =>
-          field.content.type === "file"
+          field.content.type === "file" &&
+          field.content.fileName === rootPlan.source.name
             ? {
                 ...field,
                 content: { ...field.content, fileName: rootName },
@@ -548,6 +594,7 @@ const moveToMatter = createSafeHandler(
     workspaceId,
     user,
     request,
+    server,
     body,
   }) {
     return yield* moveToMatterHandler({
@@ -557,6 +604,7 @@ const moveToMatter = createSafeHandler(
       sourceWorkspaceId: workspaceId,
       userId: user.id,
       request,
+      server,
       body,
     });
   },

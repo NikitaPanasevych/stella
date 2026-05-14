@@ -24,6 +24,7 @@ import {
   createAuditContext,
   writeAuditLog,
 } from "@/api/lib/audit-log";
+import { getAuth } from "@/api/lib/auth";
 import type { AccessibleWorkspace } from "@/api/lib/auth";
 import { createSafeId } from "@/api/lib/branded-types";
 import type { SafeId } from "@/api/lib/branded-types";
@@ -55,6 +56,7 @@ type CopyToMatterHandlerOptions = {
   sourceWorkspaceId: SafeId<"workspace">;
   userId: SafeId<"user">;
   request: Request;
+  server: Parameters<typeof createAuditContext>[0]["server"];
   body: CopyToMatterBody;
 };
 
@@ -65,6 +67,7 @@ const copyToMatterHandler = async function* ({
   sourceWorkspaceId,
   userId,
   request,
+  server,
   body,
 }: CopyToMatterHandlerOptions) {
   const { entityId: sourceEntityId, targetWorkspaceId } = body;
@@ -82,6 +85,19 @@ const copyToMatterHandler = async function* ({
   if (!target || target.status !== "active") {
     return Result.err(
       new HandlerError({ status: 404, message: "Target matter not found" }),
+    );
+  }
+
+  const targetPermission = await getAuth().api.hasPermission({
+    headers: request.headers,
+    body: { permissions: { entity: ["create"] } },
+  });
+  if (!targetPermission.success) {
+    return Result.err(
+      new HandlerError({
+        status: 403,
+        message: "Not allowed to create entities in target matter",
+      }),
     );
   }
 
@@ -150,17 +166,18 @@ const copyToMatterHandler = async function* ({
   );
 
   const [sourceProperties, targetProperties] = yield* Result.await(
-    safeDb( async (tx) =>
-      Promise.all([
-        tx.query.properties.findMany({
-          where: { workspaceId: { eq: sourceWorkspaceId } },
-          columns: { id: true, name: true, content: true },
-        }),
-        tx.query.properties.findMany({
-          where: { workspaceId: { eq: targetWorkspaceId } },
-          columns: { id: true, name: true, content: true },
-        }),
-      ]),
+    safeDb(
+      async (tx) =>
+        await Promise.all([
+          tx.query.properties.findMany({
+            where: { workspaceId: { eq: sourceWorkspaceId } },
+            columns: { id: true, name: true, content: true },
+          }),
+          tx.query.properties.findMany({
+            where: { workspaceId: { eq: targetWorkspaceId } },
+            columns: { id: true, name: true, content: true },
+          }),
+        ]),
     ),
   );
 
@@ -269,6 +286,7 @@ const copyToMatterHandler = async function* ({
     workspaceId: targetWorkspaceId,
     userId,
     request,
+    server,
   });
 
   const txResult = yield* Result.await(
@@ -304,8 +322,12 @@ const copyToMatterHandler = async function* ({
         });
 
       if (rootRenamed) {
+        // Only sync the file field whose fileName was in lockstep with
+        // the source entity name (the canonical primary content). Other
+        // file fields — attachments, custom labels — are left alone.
         rootPlan.rewrittenFields = rootPlan.rewrittenFields.map((field) =>
-          field.content.type === "file"
+          field.content.type === "file" &&
+          field.content.fileName === rootPlan.source.name
             ? {
                 ...field,
                 content: { ...field.content, fileName: rootName },
@@ -447,6 +469,7 @@ const copyToMatter = createSafeHandler(
     workspaceId,
     user,
     request,
+    server,
     body,
   }) {
     return yield* copyToMatterHandler({
@@ -456,6 +479,7 @@ const copyToMatter = createSafeHandler(
       sourceWorkspaceId: workspaceId,
       userId: user.id,
       request,
+      server,
       body,
     });
   },

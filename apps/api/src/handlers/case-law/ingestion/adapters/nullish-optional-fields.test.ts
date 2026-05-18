@@ -25,12 +25,15 @@ type MockRoute = {
 const mockFetchWithBodies = (routes: MockRoute[]) => {
   const mockedFetch: typeof fetch = Object.assign(
     async (input: string | URL | Request): Promise<Response> => {
-      const url =
-        typeof input === "string"
-          ? input
-          : input instanceof URL
-            ? input.href
-            : input.url;
+      const url = (() => {
+        if (typeof input === "string") {
+          return input;
+        }
+        if (input instanceof URL) {
+          return input.href;
+        }
+        return input.url;
+      })();
 
       const match = routes
         .filter((route) => url.includes(route.pattern))
@@ -307,12 +310,15 @@ describe("case-law adapter nullish optionals", () => {
   test("PL Courts falls back to the dump item when a detail request times out", async () => {
     globalThis.fetch = Object.assign(
       async (input: string | URL | Request): Promise<Response> => {
-        const url =
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.href
-              : input.url;
+        const url = (() => {
+          if (typeof input === "string") {
+            return input;
+          }
+          if (input instanceof URL) {
+            return input.href;
+          }
+          return input.url;
+        })();
 
         if (url.includes("/api/dump/judgments")) {
           return new Response(
@@ -417,12 +423,15 @@ describe("case-law adapter nullish optionals", () => {
 
     globalThis.fetch = Object.assign(
       async (input: string | URL | Request): Promise<Response> => {
-        const url =
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.href
-              : input.url;
+        const url = (() => {
+          if (typeof input === "string") {
+            return input;
+          }
+          if (input instanceof URL) {
+            return input.href;
+          }
+          return input.url;
+        })();
 
         if (url.includes("/api/dump/judgments")) {
           return new Response(
@@ -489,12 +498,15 @@ describe("case-law adapter nullish optionals", () => {
   test("PL Courts falls back to the dump item when detail JSON is malformed", async () => {
     globalThis.fetch = Object.assign(
       async (input: string | URL | Request): Promise<Response> => {
-        const url =
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.href
-              : input.url;
+        const url = (() => {
+          if (typeof input === "string") {
+            return input;
+          }
+          if (input instanceof URL) {
+            return input.href;
+          }
+          return input.url;
+        })();
 
         if (url.includes("/api/dump/judgments")) {
           return new Response(
@@ -546,12 +558,15 @@ describe("case-law adapter nullish optionals", () => {
         input: string | URL | Request,
         init?: RequestInit,
       ): Promise<Response> => {
-        const url =
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.href
-              : input.url;
+        const url = (() => {
+          if (typeof input === "string") {
+            return input;
+          }
+          if (input instanceof URL) {
+            return input.href;
+          }
+          return input.url;
+        })();
 
         if (url.includes("/api/dump/judgments")) {
           return new Response(
@@ -652,6 +667,29 @@ describe("case-law adapter nullish optionals", () => {
     const decision = result.unwrap().decisions[0];
     expect(decision?.caseNumber).toBe("1Cdo/1/2024");
     expect(decision?.ecli).toBe("ECLI:SK:TEST");
+  });
+
+  test("SK Courts skips items missing required court data", async () => {
+    mockFetchWithBodies([
+      {
+        pattern: "/pilot/api/ress-isu-service/v1/rozhodnutie?",
+        body: JSON.stringify({
+          rozhodnutieList: [
+            {
+              spisovaZnacka: "1Cdo/2/2024",
+              sud: null,
+              datumVydania: "01.02.2024",
+            },
+          ],
+          numFound: 1,
+        }),
+      },
+    ]);
+
+    const result = await skCourtsAdapter.fetchPage(null, {});
+
+    expect(result.isOk()).toBe(true);
+    expect(result.unwrap().decisions).toEqual([]);
   });
 
   test("PL Courts uses the extended page timeout budget for sequential detail fetches", () => {

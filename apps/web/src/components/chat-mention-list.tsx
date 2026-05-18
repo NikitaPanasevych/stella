@@ -1,11 +1,11 @@
 import {
-  forwardRef,
   useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
   useState,
 } from "react";
+import type { Ref } from "react";
 
 import type { SuggestionOptions, SuggestionProps } from "@tiptap/suggestion";
 import {
@@ -118,29 +118,43 @@ const groupByCategory = (
   return result;
 };
 
-type DrillDownState = {
+type DrillTarget = {
   workspaceId: string;
   viewId: string;
   name: string;
 };
 
-export const ChatMentionList = forwardRef<
-  ReturnType<NonNullable<SuggestionOptions["render"]>>,
-  SuggestionProps<ChatMentionOption> & {
-    loadWorkspaceEntities: (
-      workspace: ChatMentionOption,
-      query: string,
-    ) => Promise<ChatMentionOption[]>;
-  }
->(({ items, command, clientRect, loadWorkspaceEntities, query }, ref) => {
+type DrillState =
+  | { kind: "none" }
+  | { kind: "loading"; target: DrillTarget }
+  | { kind: "loaded"; target: DrillTarget; items: ChatMentionOption[] }
+  | { kind: "error"; target: DrillTarget };
+
+type ChatMentionListHandle = ReturnType<
+  NonNullable<SuggestionOptions["render"]>
+>;
+
+type ChatMentionListProps = SuggestionProps<ChatMentionOption> & {
+  loadWorkspaceEntities: (
+    workspace: ChatMentionOption,
+    query: string,
+  ) => Promise<ChatMentionOption[]>;
+  ref?: Ref<ChatMentionListHandle>;
+};
+
+export const ChatMentionList = ({
+  items,
+  command,
+  clientRect,
+  loadWorkspaceEntities,
+  query,
+  ref,
+}: ChatMentionListProps) => {
   const t = useTranslations();
   const categoryLabel = useCategoryLabel();
   const [isOpen, setIsOpen] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [drillDown, setDrillDown] = useState<DrillDownState | null>(null);
-  const [drillDownItems, setDrillDownItems] = useState<ChatMentionOption[]>([]);
-  const [entitiesLoading, setEntitiesLoading] = useState(false);
-  const [entitiesError, setEntitiesError] = useState(false);
+  const [drillState, setDrillState] = useState<DrillState>({ kind: "none" });
   const listRef = useRef<HTMLDivElement>(null);
   const lastClientRectRef = useRef<DOMRect | null>(null);
   const latestClientRect = clientRect?.() ?? null;
@@ -162,32 +176,35 @@ export const ChatMentionList = forwardRef<
     [clientRect],
   );
 
-  const activeItems = drillDown ? drillDownItems : items;
+  const drillTarget = drillState.kind === "none" ? null : drillState.target;
+  const drillItems = drillState.kind === "loaded" ? drillState.items : [];
+  const activeItems = drillTarget ? drillItems : items;
   const safeIndex = Math.min(
     selectedIndex,
     Math.max(0, activeItems.length - 1),
   );
 
   useEffect(() => {
-    if (drillDown === null) {
-      setDrillDownItems([]);
-      setEntitiesLoading(false);
-      setEntitiesError(false);
+    if (drillTarget === null) {
       return undefined;
     }
 
     let cancelled = false;
-    setEntitiesLoading(true);
-    setEntitiesError(false);
+    setDrillState((prev) => {
+      if (prev.kind === "loading" && prev.target === drillTarget) {
+        return prev;
+      }
+      return { kind: "loading", target: drillTarget };
+    });
 
     void loadWorkspaceEntities(
       {
-        id: drillDown.workspaceId,
-        label: drillDown.name,
+        id: drillTarget.workspaceId,
+        label: drillTarget.name,
         category: "workspace",
         kind: "workspace",
         mimeType: null,
-        sourceViewId: drillDown.viewId,
+        sourceViewId: drillTarget.viewId,
       },
       query,
     )
@@ -196,23 +213,24 @@ export const ChatMentionList = forwardRef<
           return;
         }
 
-        setDrillDownItems(nextItems);
-        setEntitiesLoading(false);
+        setDrillState({
+          kind: "loaded",
+          target: drillTarget,
+          items: nextItems,
+        });
       })
       .catch(() => {
         if (cancelled) {
           return;
         }
 
-        setDrillDownItems([]);
-        setEntitiesError(true);
-        setEntitiesLoading(false);
+        setDrillState({ kind: "error", target: drillTarget });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [drillDown, loadWorkspaceEntities, query]);
+  }, [drillTarget, loadWorkspaceEntities, query]);
 
   // Scroll the selected item into view on index change
   useEffect(() => {
@@ -234,23 +252,26 @@ export const ChatMentionList = forwardRef<
       return;
     }
 
-    setDrillDown({
-      workspaceId: workspace.id,
-      viewId: workspace.sourceViewId,
-      name: workspace.label,
+    setDrillState({
+      kind: "loading",
+      target: {
+        workspaceId: workspace.id,
+        viewId: workspace.sourceViewId,
+        name: workspace.label,
+      },
     });
     setSelectedIndex(0);
   };
 
   const handleBack = () => {
-    setDrillDown(null);
+    setDrillState({ kind: "none" });
     setSelectedIndex(0);
   };
 
   useImperativeHandle(ref, () => ({
     onKeyDown: ({ event }) => {
       if (event.key === "Escape") {
-        if (drillDown) {
+        if (drillTarget) {
           handleBack();
           return true;
         }
@@ -297,7 +318,7 @@ export const ChatMentionList = forwardRef<
       }
 
       // ArrowRight on a workspace item drills down
-      if (event.key === "ArrowRight" && !drillDown) {
+      if (event.key === "ArrowRight" && !drillTarget) {
         const item = activeItems.at(safeIndex);
         if (item?.category === "workspace") {
           handleDrillDown(item);
@@ -306,7 +327,7 @@ export const ChatMentionList = forwardRef<
       }
 
       // ArrowLeft exits drill-down
-      if (event.key === "ArrowLeft" && drillDown) {
+      if (event.key === "ArrowLeft" && drillTarget) {
         handleBack();
         return true;
       }
@@ -335,7 +356,7 @@ export const ChatMentionList = forwardRef<
           className="flex max-h-64 w-full min-w-0 flex-col gap-0.5 overflow-x-hidden overflow-y-auto"
           ref={listRef}
         >
-          {drillDown && (
+          {drillTarget && (
             <Button
               className="text-muted-foreground justify-start gap-2 font-normal"
               onClick={handleBack}
@@ -344,35 +365,35 @@ export const ChatMentionList = forwardRef<
             >
               <ArrowLeftIcon className="size-3.5 shrink-0" />
               <LayersIcon className="size-3.5 shrink-0" />
-              <span className="truncate">{drillDown.name}</span>
+              <span className="truncate">{drillTarget.name}</span>
             </Button>
           )}
 
-          {drillDown && entitiesLoading && (
+          {drillState.kind === "loading" && (
             <div className="flex items-center justify-center p-2">
               <LoaderIcon className="text-muted-foreground size-4 animate-spin" />
             </div>
           )}
 
-          {drillDown && !entitiesLoading && entitiesError && (
+          {drillState.kind === "error" && (
             <div className="text-destructive flex items-center justify-center p-2 text-center text-sm">
               {t("chat.mention.loadError")}
             </div>
           )}
 
-          {!drillDown && activeItems.length === 0 && (
+          {drillState.kind === "none" && activeItems.length === 0 && (
             <div className="text-muted-foreground flex items-center justify-center p-2 text-center text-sm">
               {t("chat.mention.noResults")}
             </div>
           )}
 
-          {drillDown && !entitiesLoading && drillDownItems.length === 0 && (
+          {drillState.kind === "loaded" && drillState.items.length === 0 && (
             <div className="text-muted-foreground flex items-center justify-center p-2 text-center text-sm">
               {t("chat.mention.noResults")}
             </div>
           )}
 
-          {!drillDown &&
+          {drillState.kind === "none" &&
             groups.map((group) => {
               const firstItem = group.items[0];
               const groupStartIndex = firstItem
@@ -434,9 +455,8 @@ export const ChatMentionList = forwardRef<
               );
             })}
 
-          {drillDown &&
-            !entitiesLoading &&
-            drillDownItems?.map((item, i) => (
+          {drillState.kind === "loaded" &&
+            drillState.items.map((item, i) => (
               <Button
                 className={cn(
                   "min-w-0 justify-start gap-2 overflow-hidden font-normal",
@@ -461,6 +481,4 @@ export const ChatMentionList = forwardRef<
       </PopoverPopup>
     </Popover>
   );
-});
-
-ChatMentionList.displayName = "ChatMentionList";
+};

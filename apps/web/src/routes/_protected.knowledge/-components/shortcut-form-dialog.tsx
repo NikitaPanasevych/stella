@@ -125,7 +125,7 @@ export const ShortcutFormDialog = ({
 
     setSaving(true);
 
-    if (isEdit && initial?.id) {
+    if (isEdit && initial.id) {
       const response = await api.shortcuts({ shortcutId: initial.id }).post({
         name: form.name.trim(),
         description: form.description.trim() || null,
@@ -287,10 +287,12 @@ export const ShortcutFormDialog = ({
               </label>
               <Select
                 value={form.scope}
-                onValueChange={(v) =>
-                  // eslint-disable-next-line typescript/no-unsafe-type-assertion
-                  setForm((f) => ({ ...f, scope: v as ShortcutScope }))
-                }
+                onValueChange={(v) => {
+                  if (v !== "team" && v !== "private") {
+                    return;
+                  }
+                  setForm((f) => ({ ...f, scope: v }));
+                }}
               >
                 <SelectTrigger id="shortcut-scope">
                   <SelectValue />

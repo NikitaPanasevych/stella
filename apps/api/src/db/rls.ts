@@ -3,6 +3,10 @@ import * as p from "drizzle-orm/pg-core";
 
 export const stella = p.pgRole("stella").existing();
 
+// Narrow write role used only by the case-law ingestion daemon.
+// Bootstrapped in 20260516000000_case_law_ingestion_role.
+export const stellaIngestion = p.pgRole("stella_ingestion").existing();
+
 /** Session setting keys set via `set_config` per transaction. */
 export const SETTING_WORKSPACE_IDS = "app.workspace_ids";
 export const SETTING_ORGANIZATION_ID = "app.organization_id";
@@ -206,6 +210,12 @@ export const globalCaseLawPolicies = () => [
     to: stella,
     using: allowAllRows,
   }),
+  p.pgPolicy("case_law_ingestion_access", {
+    for: "all",
+    to: stellaIngestion,
+    using: allowAllRows,
+    withCheck: allowAllRows,
+  }),
 ];
 
 const mcpConnectorVisibleCheck = sql`(
@@ -361,6 +371,74 @@ export const promptShortcutPolicies = () => [
     for: "delete",
     to: stella,
     using: promptShortcutReadWriteCheck,
+  }),
+];
+
+const agentSkillVisibleCheck = sql`(
+  ${organizationCheck} AND (scope = 'team' OR ${userCheck})
+)`;
+
+const agentSkillInsertCheck = sql`(
+  ${organizationCheck} AND ${userCheck}
+)`;
+
+const agentSkillResourceVisibleCheck = sql`(
+  ${organizationCheck} AND EXISTS (
+    SELECT 1
+    FROM agent_skills s
+    WHERE s.id = skill_id
+      AND s.organization_id = agent_skill_resources.organization_id
+      AND (s.scope = 'team' OR s.user_id = (SELECT current_setting(
+        '${sql.raw(SETTING_USER_ID)}', true
+      )))
+  )
+)`;
+
+export const agentSkillPolicies = () => [
+  p.pgPolicy("agent_skill_select", {
+    for: "select",
+    to: stella,
+    using: agentSkillVisibleCheck,
+  }),
+  p.pgPolicy("agent_skill_insert", {
+    for: "insert",
+    to: stella,
+    withCheck: agentSkillInsertCheck,
+  }),
+  p.pgPolicy("agent_skill_update", {
+    for: "update",
+    to: stella,
+    using: agentSkillVisibleCheck,
+    withCheck: agentSkillVisibleCheck,
+  }),
+  p.pgPolicy("agent_skill_delete", {
+    for: "delete",
+    to: stella,
+    using: agentSkillVisibleCheck,
+  }),
+];
+
+export const agentSkillResourcePolicies = () => [
+  p.pgPolicy("agent_skill_resource_select", {
+    for: "select",
+    to: stella,
+    using: agentSkillResourceVisibleCheck,
+  }),
+  p.pgPolicy("agent_skill_resource_insert", {
+    for: "insert",
+    to: stella,
+    withCheck: agentSkillResourceVisibleCheck,
+  }),
+  p.pgPolicy("agent_skill_resource_update", {
+    for: "update",
+    to: stella,
+    using: agentSkillResourceVisibleCheck,
+    withCheck: agentSkillResourceVisibleCheck,
+  }),
+  p.pgPolicy("agent_skill_resource_delete", {
+    for: "delete",
+    to: stella,
+    using: agentSkillResourceVisibleCheck,
   }),
 ];
 

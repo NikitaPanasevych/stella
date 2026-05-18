@@ -251,6 +251,7 @@
         "reasoning": "Érvelés"
       }
     },
+    "analyzing": "Elemzés folyamatban...",
     "columns": {
       "caseNumber": "Ügyszám",
       "country": "Ország",
@@ -291,16 +292,23 @@
       "nalusDisclaimer": "Source: NALUS, Constitutional Court of the Czech Republic. Free of charge. This electronic version is not authentic.",
       "popularName": "Népszerű név",
       "sections": "Szakaszok",
-      "source": "Csak becslés · árak innen:",
+      "source": "Forrás",
+      "sourceFields": {
+        "decisionCategory": "Döntés kategóriája",
+        "publishedOnWeb": "Weben közzétéve"
+      },
       "statutes": "Applicable statutes",
       "viewOriginal": "Forrás megtekintése"
     }
   },
   "chat": {
+    "acceptAllCount": "Összes elfogadása ({count})",
     "actionExpand": {
       "toastDescription": "Full-page chat lands with persisted threads.",
       "toastTitle": "Full view not yet available"
     },
+    "aiPrompt": "AI-üzenetmező",
+    "aiThread": "AI-beszélgetés",
     "anonymizedMode": "Anonimizált AI mód",
     "anonymizedModeDisabled": "Az anonimizált AI mód ki van kapcsolva",
     "anonymizedModeEnabled": "Az anonimizált AI mód be van kapcsolva",
@@ -324,6 +332,7 @@
       "externalMcpDescription": "Only the information needed for this tool call will be sent.",
       "externalMcpQuestion": "Can Stella send this request to {provider}?"
     },
+    "askAnything": "Kérdezzen bármit",
     "askUser": {
       "custom": "Saját válasz",
       "default": "Alapértelmezett",
@@ -357,15 +366,20 @@
     "editableFilePlaceholder": "Csevegés vagy szerkesztés: {fileName}",
     "editableFilePlaceholderAction": "Csevegés vagy szerkesztés",
     "editorLoading": "Loading editor…",
+    "emptyThreadDescription": "Kérdezzen erről az ügyről, fogalmazzon szöveget, vagy kérjen rövid kutatási jegyzetet.",
+    "emptyThreadTitle": "Beszélgetés indítása",
     "externalSourcePlaceholder": "Csevegés erről: {title}",
     "externalSourcePlaceholderAction": "Csevegés erről:",
     "extractingContent": "Tartalom kinyerése...",
     "filePlaceholder": "Csevegés erről: {fileName}",
     "filePlaceholderAction": "Csevegés erről:",
     "fileTooLarge": "A fájl meghaladja a {maxSize} korlátot",
+    "focusSuggestion": "Javaslat fókuszálása: {topic}",
     "folioCitationFallback": "o. {n}",
     "greeting": "Min szeretne dolgozni?",
     "greetingSubtitle": "Kezdje egy üggyel, dokumentummal vagy egyszerű kérdéssel.",
+    "hideThread": "Beszélgetés elrejtése",
+    "inDocument": "A dokumentumban",
     "landing": {
       "lastAccessedMatters": "Legutóbb megnyitott ügyek",
       "noMatters": "Még nincsenek ügyek",
@@ -390,7 +404,12 @@
     "moveToMain": "Áthelyezés a fő nézetbe",
     "moveToSide": "Áthelyezés az oldalsó panelbe",
     "newChat": "Új csevegés",
+    "noPromptPresetOnly": "Nincs üzenet, csak előbeállítás",
     "noThreads": "Még nincsenek beszélgetések",
+    "openCitation": "Hivatkozás megnyitása: {label}",
+    "openThread": "Beszélgetés megnyitása",
+    "pageNumber": "{page}. oldal",
+    "pastedChars": "Beillesztve · {count} karakter",
     "pastedText": {
       "expand": "Teljes szöveg megjelenítése",
       "fromClipboard": "Beillesztve: {count, plural, one {# karakter} other {# karakter}}",
@@ -407,14 +426,29 @@
       },
       "tryOne": "Próbáld ki valamelyiket"
     },
+    "removeSuggestion": "(eltávolítás)",
     "resend": "Újraküldés",
+    "resizeThread": "Beszélgetés méretezése",
     "send": "Üzenet küldése",
     "sendError": "Probléma történt az üzenet elküldésekor. Ha a hiba továbbra is fennáll, vedd fel a kapcsolatot a támogatással.",
     "sendErrorAnonymizationBlocked": "A Stella nem tudta anonimizálni az egyik mellékletet, ezért semmi sem lett elküldve. Távolítsd el a fájlt, vagy küldd el az üzenetet anonimizálás nélkül.",
     "sendErrorInsufficientCredits": "Az AI-szolgáltatónak további kreditre van szüksége. Kérd a munkaterület adminisztrátorát, hogy töltse fel a fiókot.",
     "sendErrorProviderUnavailable": "Az AI-szolgáltató átmenetileg nem elérhető. Próbáld újra egy pillanat múlva.",
     "sendErrorQuotaExhausted": "Az AI-szolgáltató kvótája kimerült. Próbáld újra egy perc múlva, vagy kérd a munkaterület adminisztrátorát, hogy bővítse a csomagot.",
+    "sendPrompt": "Üzenet küldése",
     "sendWithoutAnonymization": "Küldés anonimizálás nélkül",
+    "sources": "Források:",
+    "stopResponse": "Leállítás",
+    "suggestionSeverity": {
+      "style": "Stílus",
+      "substantive": "Érdemi",
+      "typo": "Elütés"
+    },
+    "suggestionStatus": {
+      "accepted": "Alkalmazva",
+      "rejected": "Elutasítva",
+      "stale": "Elavult"
+    },
     "thinking": "Kontextussal dolgozom",
     "threads": "Előzmények",
     "tool": {
@@ -538,6 +572,28 @@
     "actions": "Műveletek",
     "add": "Hozzáadás",
     "all": "Összes",
+    "anonymizationLabels": {
+      "address": "Cím",
+      "bankAccountNumber": "Bankszámlaszám",
+      "birthNumber": "Születési szám",
+      "creditCardNumber": "Bankkártyaszám",
+      "date": "Dátum",
+      "dateOfBirth": "Születési dátum",
+      "emailAddress": "E-mail-cím",
+      "iban": "IBAN",
+      "identityCardNumber": "Személyi igazolvány száma",
+      "landParcel": "Földrészlet",
+      "miscellaneous": "Egyéb",
+      "monetaryAmount": "Pénzösszeg",
+      "nationalIdentificationNumber": "Nemzeti azonosító szám",
+      "organization": "Szervezet",
+      "passportNumber": "Útlevélszám",
+      "person": "Személy",
+      "phoneNumber": "Telefonszám",
+      "registrationNumber": "Cégjegyzékszám",
+      "socialSecurityNumber": "Társadalombiztosítási szám",
+      "taxIdentificationNumber": "Adóazonosító"
+    },
     "cancel": "Mégse",
     "captions": "Captions",
     "caseLaw": "Joggyakorlat",
@@ -585,6 +641,7 @@
     "error": "Hiba",
     "expenses": "Kiadások",
     "filter": "Szűrő",
+    "goBack": "Vissza",
     "history": "Előzmények",
     "invite": "Meghívás",
     "invoices": "Számlák",
@@ -614,6 +671,7 @@
     "properties": "Tulajdonságok",
     "reconnecting": "Újracsatlakozás…",
     "reference": "Hivatkozás",
+    "remove": "Eltávolítás",
     "rename": "Átnevezés",
     "required": "Kötelező",
     "retry": "Újrapróbál",
@@ -1067,6 +1125,32 @@
     "unsupportedDocxEditTitle": "Editing blocked"
   },
   "inspector": {
+    "anonymization": {
+      "addAction": "Add",
+      "addPlaceholder": "Term to anonymize",
+      "contextMenuAddAction": "Anonymize selection",
+      "deleteAction": "Delete term",
+      "detectedHeading": "Talált a dokumentumban ({count})",
+      "detectingMatches": "Detecting entities in this document…",
+      "emptyState": "No workspace-specific terms yet. Add one above.",
+      "ignoreAction": "Mellőzés ebben a dokumentumban",
+      "ignoreScopeAlways": "Mindig mellőzni",
+      "ignoreScopeDocument": "Mellőzés ebben az ügyben",
+      "ignoreScopeMenuAriaLabel": "Mellőzés hatóköre",
+      "ignoreScopeWorkspace": "Mellőzés ebben a munkaterületen",
+      "labelPickerAriaLabel": "Entity label",
+      "labelPickerEmpty": "No matching label.",
+      "labelPickerPlaceholder": "Label",
+      "matchCount": "{count} entities highlighted in this document.",
+      "matchedWorkspaceTermsHeading": "Matching workspace terms ({count})",
+      "noMatchesInDocument": "None of your workspace terms appear in this document.",
+      "openFullViewHint": "Nyissa meg a fájlt teljes nézetben az anonimizálási kiemelések és a dokumentumon belüli találatszámok megtekintéséhez.",
+      "restoreAction": "Visszaállítás ebben a dokumentumban",
+      "termAddedToast": "Added \"{value}\" to workspace anonymization terms.",
+      "termMatchCountAriaLabel": "Matched {count} times in this document.",
+      "title": "Anonymization vocabulary",
+      "workspaceTermsHeading": "Workspace terms ({count})"
+    },
     "external": {
       "confirmDescription": "Külső webhelyet készülsz megnyitni.",
       "confirmTitle": "Külső hivatkozás megnyitása?",
@@ -1075,6 +1159,7 @@
       "unavailable": "A hivatkozott webhely nem engedélyez biztonságos előnézetet. Ha az eszköz visszaadta a dokumentum szövegét, az itt jelenik meg; ellenkező esetben nyissa meg az eredetit."
     },
     "facet": {
+      "anonymization": "Anonymization",
       "preview": "Preview",
       "previewInFullViewToast": "Preview is the main view here. Click the minimize button to see it alongside metadata."
     },
@@ -1104,11 +1189,13 @@
     "agentSkills": {
       "builtInBadge": "Beépített",
       "builtInSection": "Beépített készségek",
+      "chooseFile": "Válassz fájlt, vagy húzd ide",
       "deleteConfirmDescription": "A(z) „{name}” eltávolításra kerül ebből a munkaterületből.",
       "deleteConfirmTitle": "Törlöd a készséget?",
       "description": "Telepíts SKILL.md-csomagokat, amelyek speciális módszereket és csak olvasható erőforrásokat adnak a chathez.",
       "disableSkill": "Készség kikapcsolása",
       "disabled": "Kikapcsolva",
+      "dropFile": "Húzd ide a SKILL.md vagy .zip fájlt",
       "emptyDescription": "Tölts fel egy SKILL.md fájlt, egy tömörített készségmappát, vagy importálj egy nyilvános GitHub-készség URL-t.",
       "emptyTitle": "Telepítsd az első készségedet",
       "enableSkill": "Készség bekapcsolása",
@@ -1122,6 +1209,7 @@
       "scope": "Láthatóság",
       "scopePrivate": "Csak én",
       "scopeTeam": "Mindenki a szervezetben",
+      "selectedFile": "Kiválasztva: {name}",
       "sourceUpload": "Feltöltve",
       "sourceUrl": "Nyilvános URL",
       "teamSection": "Csapatkészségek",
@@ -1528,6 +1616,23 @@
       "activeMembers": "Active members",
       "ai": "AI configuration",
       "aiDescription": "Bring your own API key or configure data sovereignty region",
+      "anonymization": {
+        "addAction": "Hozzáadás",
+        "addPlaceholder": "Mindig maszkolandó kifejezés (pl. iroda neve)",
+        "deleteAction": "Kifejezés törlése",
+        "description": "Kezelje az iroda-szintű tiltólistát: kifejezések, amelyeket az anonimizáló folyamat mindig maszkol. Importálja a kezdő listát CSV, TXT vagy JSON fájlból.",
+        "emptyState": "Még nincsenek iroda-szintű kifejezések. Adjon hozzá fent egyet, vagy importáljon listát.",
+        "entriesHeading": "Iroda-szintű kifejezések ({count})",
+        "importAction": "Importálás",
+        "importHint": "CSV (canonical,label,variants), TXT (soronként egy) vagy JSON",
+        "importParseError": "Nem sikerült olvasni a fájlt. Használjon CSV-t, TXT-t vagy JSON-t.",
+        "importSuccessToast": "{count} kifejezés importálva.",
+        "labelPickerAriaLabel": "Entitás típusa",
+        "labelPickerEmpty": "Nincs egyező típus.",
+        "labelPickerPlaceholder": "Típus",
+        "termAddedToast": "„{value}” hozzáadva az iroda tiltólistájához.",
+        "title": "Anonimizálás"
+      },
       "matterNumbering": "Matter numbering",
       "matterNumberingDescription": "Configure how new matter reference numbers are generated",
       "membersDescription": "Manage who has access to this organization",
@@ -1585,6 +1690,7 @@
     "noLinks": "Nincsenek kapcsolt elemek",
     "noSubtasks": "Nincsenek alfeladatok",
     "noTasksAssigned": "Nincsenek hozzárendelt feladatok",
+    "notFound": "A feladat nem található",
     "overdue": "Lejárt",
     "priority": "Prioritás",
     "priorityValues": {
@@ -1719,6 +1825,7 @@
     "deleteSelection": "Kijelölés törlése",
     "deleteWorkspace": "Ügy törlése",
     "deleteWorkspaceConfirmDescription": "Biztosan törölni szeretné ezt az ügyet? Ez a művelet nem vonható vissza.",
+    "deletedItem": "Törölve: {name}",
     "deletingWorkspace": "Ügy törlése folyamatban",
     "documentsCount": "{count, plural, one {# dokumentum} other {# dokumentum}}",
     "dropToUploadFiles": "Húzza ide a fájlokat a feltöltéshez",

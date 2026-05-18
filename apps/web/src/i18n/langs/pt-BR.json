@@ -251,6 +251,7 @@
         "reasoning": "Fundamentação"
       }
     },
+    "analyzing": "Analisando...",
     "columns": {
       "caseNumber": "Número do processo",
       "country": "País",
@@ -292,15 +293,22 @@
       "popularName": "Nome popular",
       "sections": "Seções",
       "source": "Fonte",
+      "sourceFields": {
+        "decisionCategory": "Categoria da decisão",
+        "publishedOnWeb": "Publicado na web"
+      },
       "statutes": "Normas aplicáveis",
       "viewOriginal": "Ver fonte"
     }
   },
   "chat": {
+    "acceptAllCount": "Aceitar tudo ({count})",
     "actionExpand": {
       "toastDescription": "O chat em página inteira virá com conversas persistidas.",
       "toastTitle": "Visualização completa ainda não disponível"
     },
+    "aiPrompt": "Campo de mensagem de IA",
+    "aiThread": "Conversa de IA",
     "anonymizedMode": "Modo IA anonimizado",
     "anonymizedModeDisabled": "O modo IA anonimizado está desativado",
     "anonymizedModeEnabled": "O modo de IA anonimizada está ativado",
@@ -324,6 +332,7 @@
       "externalMcpDescription": "Só serão enviadas as informações necessárias para esta chamada de ferramenta.",
       "externalMcpQuestion": "A Stella pode enviar esta solicitação para {provider}?"
     },
+    "askAnything": "Pergunte qualquer coisa",
     "askUser": {
       "custom": "Escreva o seu próprio",
       "default": "Padrão",
@@ -357,15 +366,20 @@
     "editableFilePlaceholder": "Converse ou edite {fileName}",
     "editableFilePlaceholderAction": "Converse ou edite",
     "editorLoading": "Carregando editor…",
+    "emptyThreadDescription": "Pergunte sobre este caso, redija um texto ou peça uma nota breve de pesquisa.",
+    "emptyThreadTitle": "Iniciar conversa",
     "externalSourcePlaceholder": "Converse sobre {title}",
     "externalSourcePlaceholderAction": "Conversar sobre",
     "extractingContent": "Extraindo conteúdo...",
     "filePlaceholder": "Conversar sobre {fileName}",
     "filePlaceholderAction": "Conversar sobre",
     "fileTooLarge": "O arquivo excede o limite {maxSize}",
+    "focusSuggestion": "Focar sugestão: {topic}",
     "folioCitationFallback": "pág. {n}",
     "greeting": "No que você gostaria de trabalhar?",
     "greetingSubtitle": "Comece com um caso, documento ou pergunta simples.",
+    "hideThread": "Ocultar conversa",
+    "inDocument": "No documento",
     "landing": {
       "lastAccessedMatters": "Últimos casos acessados",
       "noMatters": "Ainda não há casos",
@@ -390,7 +404,12 @@
     "moveToMain": "Mover para a visualização principal",
     "moveToSide": "Mover para o painel lateral",
     "newChat": "Novo bate-papo",
+    "noPromptPresetOnly": "Sem mensagem, apenas predefinição",
     "noThreads": "Ainda não há conversas",
+    "openCitation": "Abrir citação {label}",
+    "openThread": "Abrir conversa",
+    "pageNumber": "Página {page}",
+    "pastedChars": "Colado · {count} caracteres",
     "pastedText": {
       "expand": "Mostrar texto completo",
       "fromClipboard": "{count, plural, one {# caractere colado} other {# caracteres colados}}",
@@ -407,14 +426,29 @@
       },
       "tryOne": "Experimente um destes para começar"
     },
+    "removeSuggestion": "(remover)",
     "resend": "Reenviar",
+    "resizeThread": "Redimensionar conversa",
     "send": "Enviar mensagem",
     "sendError": "Ocorreu um problema ao enviar sua mensagem. Entre em contato com o suporte se o erro persistir.",
     "sendErrorAnonymizationBlocked": "A Stella não conseguiu anonimizar um anexo, então nada foi enviado. Remova o arquivo ou envie esta mensagem sem anonimização.",
     "sendErrorInsufficientCredits": "O provedor de IA precisa de mais créditos. Peça ao administrador do espaço de trabalho para recarregar a conta.",
     "sendErrorProviderUnavailable": "O provedor de IA está temporariamente indisponível. Tente novamente em instantes.",
     "sendErrorQuotaExhausted": "A cota do provedor de IA foi esgotada. Tente novamente em um minuto ou peça ao administrador do espaço de trabalho para atualizar o plano.",
+    "sendPrompt": "Enviar mensagem",
     "sendWithoutAnonymization": "Enviar sem anonimização",
+    "sources": "Fontes:",
+    "stopResponse": "Parar",
+    "suggestionSeverity": {
+      "style": "Estilo",
+      "substantive": "Substancial",
+      "typo": "Erro de digitação"
+    },
+    "suggestionStatus": {
+      "accepted": "Aplicado",
+      "rejected": "Rejeitado",
+      "stale": "Desatualizado"
+    },
     "thinking": "Trabalhando com contexto",
     "threads": "Histórico",
     "tool": {
@@ -538,6 +572,28 @@
     "actions": "Ações",
     "add": "Adicionar",
     "all": "Todos",
+    "anonymizationLabels": {
+      "address": "Endereço",
+      "bankAccountNumber": "Número da conta bancária",
+      "birthNumber": "Número de nascimento",
+      "creditCardNumber": "Número do cartão de crédito",
+      "date": "Data",
+      "dateOfBirth": "Data de nascimento",
+      "emailAddress": "E-mail",
+      "iban": "IBAN",
+      "identityCardNumber": "Número de RG",
+      "landParcel": "Lote",
+      "miscellaneous": "Outros",
+      "monetaryAmount": "Valor monetário",
+      "nationalIdentificationNumber": "Número nacional de identificação",
+      "organization": "Organização",
+      "passportNumber": "Número do passaporte",
+      "person": "Pessoa",
+      "phoneNumber": "Número de telefone",
+      "registrationNumber": "CNPJ",
+      "socialSecurityNumber": "Número de seguro social",
+      "taxIdentificationNumber": "CPF / CNPJ"
+    },
     "cancel": "Cancelar",
     "captions": "Legendas",
     "caseLaw": "Jurisprudência",
@@ -585,6 +641,7 @@
     "error": "Erro",
     "expenses": "Despesas",
     "filter": "Filtro",
+    "goBack": "Voltar",
     "history": "História",
     "invite": "Convidar",
     "invoices": "Faturas",
@@ -614,6 +671,7 @@
     "properties": "Propriedades",
     "reconnecting": "Reconectando…",
     "reference": "Referência",
+    "remove": "Remover",
     "rename": "Renomear",
     "required": "Obrigatório",
     "retry": "Tentar novamente",
@@ -1067,6 +1125,32 @@
     "unsupportedDocxEditTitle": "Edição bloqueada"
   },
   "inspector": {
+    "anonymization": {
+      "addAction": "Add",
+      "addPlaceholder": "Term to anonymize",
+      "contextMenuAddAction": "Anonymize selection",
+      "deleteAction": "Delete term",
+      "detectedHeading": "Detectado neste documento ({count})",
+      "detectingMatches": "Detecting entities in this document…",
+      "emptyState": "No workspace-specific terms yet. Add one above.",
+      "ignoreAction": "Ignorar neste documento",
+      "ignoreScopeAlways": "Sempre ignorar",
+      "ignoreScopeDocument": "Ignorar neste caso",
+      "ignoreScopeMenuAriaLabel": "Escopo da exclusão",
+      "ignoreScopeWorkspace": "Ignorar neste espaço de trabalho",
+      "labelPickerAriaLabel": "Entity label",
+      "labelPickerEmpty": "No matching label.",
+      "labelPickerPlaceholder": "Label",
+      "matchCount": "{count} entities highlighted in this document.",
+      "matchedWorkspaceTermsHeading": "Matching workspace terms ({count})",
+      "noMatchesInDocument": "None of your workspace terms appear in this document.",
+      "openFullViewHint": "Abra o arquivo em tela cheia para ver os destaques de anonimização e as contagens por documento.",
+      "restoreAction": "Restaurar neste documento",
+      "termAddedToast": "Added \"{value}\" to workspace anonymization terms.",
+      "termMatchCountAriaLabel": "Matched {count} times in this document.",
+      "title": "Anonymization vocabulary",
+      "workspaceTermsHeading": "Workspace terms ({count})"
+    },
     "external": {
       "confirmDescription": "Você está prestes a acessar um site externo.",
       "confirmTitle": "Abrir link externo?",
@@ -1075,6 +1159,7 @@
       "unavailable": "O site referenciado não permite uma pré-visualização segura. Se a ferramenta retornou o texto do documento, ele aparece aqui; caso contrário, abra o original."
     },
     "facet": {
+      "anonymization": "Anonymization",
       "preview": "Visualização",
       "previewInFullViewToast": "A visualização é a visualização principal aqui. Clique no botão minimizar para vê-lo junto com os metadados."
     },
@@ -1104,11 +1189,13 @@
     "agentSkills": {
       "builtInBadge": "Integrada",
       "builtInSection": "Habilidades integradas",
+      "chooseFile": "Escolha um arquivo ou arraste-o aqui",
       "deleteConfirmDescription": "“{name}” será removida deste espaço de trabalho.",
       "deleteConfirmTitle": "Excluir habilidade?",
       "description": "Instale pacotes SKILL.md que adicionam métodos especializados e recursos somente leitura ao chat.",
       "disableSkill": "Desativar habilidade",
       "disabled": "Desativada",
+      "dropFile": "Solte SKILL.md ou .zip aqui",
       "emptyDescription": "Envie um arquivo SKILL.md, uma pasta de habilidade compactada ou importe uma URL pública de habilidade do GitHub.",
       "emptyTitle": "Instale sua primeira habilidade",
       "enableSkill": "Ativar habilidade",
@@ -1122,6 +1209,7 @@
       "scope": "Visibilidade",
       "scopePrivate": "Só eu",
       "scopeTeam": "Todos na organização",
+      "selectedFile": "Selecionado: {name}",
       "sourceUpload": "Enviada",
       "sourceUrl": "URL pública",
       "teamSection": "Habilidades da equipe",
@@ -1528,6 +1616,23 @@
       "activeMembers": "Membros ativos",
       "ai": "Configuração de IA",
       "aiDescription": "Traga sua própria chave de API ou configure a região de soberania de dados",
+      "anonymization": {
+        "addAction": "Adicionar",
+        "addPlaceholder": "Termo a ser sempre mascarado (ex.: nome do escritório)",
+        "deleteAction": "Excluir termo",
+        "description": "Gerencie a lista global do escritório com os termos que o pipeline de anonimização sempre mascara e importe uma lista inicial em CSV, TXT ou JSON.",
+        "emptyState": "Ainda não há termos globais. Adicione um acima ou importe uma lista.",
+        "entriesHeading": "Termos do escritório ({count})",
+        "importAction": "Importar",
+        "importHint": "CSV (canonical,label,variants), TXT (um por linha) ou JSON",
+        "importParseError": "Não foi possível ler o arquivo. Use CSV, TXT ou JSON.",
+        "importSuccessToast": "{count} termos importados.",
+        "labelPickerAriaLabel": "Tipo de entidade",
+        "labelPickerEmpty": "Nenhum tipo correspondente.",
+        "labelPickerPlaceholder": "Tipo",
+        "termAddedToast": "“{value}” foi adicionado à lista do escritório.",
+        "title": "Anonimização"
+      },
       "matterNumbering": "Numeração de casos",
       "matterNumberingDescription": "Configure como os novos números de referência de casos são gerados",
       "membersDescription": "Gerenciar quem tem acesso a esta organização e quaisquer convites pendentes",
@@ -1585,6 +1690,7 @@
     "noLinks": "Nenhuma entidade vinculada",
     "noSubtasks": "Sem subtarefas",
     "noTasksAssigned": "Nenhuma tarefa atribuída a você",
+    "notFound": "Tarefa não encontrada",
     "overdue": "Atrasado",
     "priority": "Prioridade",
     "priorityValues": {
@@ -1719,6 +1825,7 @@
     "deleteSelection": "Excluir seleção",
     "deleteWorkspace": "Excluir caso",
     "deleteWorkspaceConfirmDescription": "Tem certeza de que deseja excluir este caso? Esta ação não pode ser desfeita.",
+    "deletedItem": "Excluído: {name}",
     "deletingWorkspace": "Excluindo caso",
     "documentsCount": "{count, plural, one {# documento} many {# documentos} other {# documentos}}",
     "dropToUploadFiles": "Solte para fazer upload de arquivos",

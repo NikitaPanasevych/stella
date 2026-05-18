@@ -2,11 +2,8 @@ export const LIMITS = {
   workspacesCount: 1000,
   propertiesCount: 20,
   entitiesCount: 10_000,
-  // TODO: switch matter views to virtualised rendering and cursor-based
-  // server pagination. Loading the whole workspace in one request
-  // doesn't scale once we lift entitiesCount past ~10k.
-  entitiesPageSizeDefault: 10_000,
-  entitiesPageSizeMax: 10_000,
+  entitiesPageSizeDefault: 100,
+  entitiesPageSizeMax: 500,
   entitiesWindowSizeDefault: 200,
   entitiesWindowSizeMax: 500,
   calendarTasksMax: 200,
@@ -17,6 +14,23 @@ export const LIMITS = {
   templateCategoriesCount: 100,
   clausesPerOrganization: 500,
   shortcutsPerUser: 100,
+  agentSkillsPerUser: 100,
+  agentSkillsPageSizeDefault: 100,
+  agentSkillsPageSizeMax: 250,
+  agentSkillsChatMetadataMax: 200,
+  agentSkillDescriptionMaxChars: 1000,
+  agentSkillCompatibilityMaxChars: 1000,
+  agentSkillLicenseMaxChars: 256,
+  agentSkillMetadataEntriesMax: 32,
+  agentSkillMetadataKeyMaxChars: 64,
+  agentSkillMetadataValueMaxChars: 512,
+  agentSkillVersionMaxChars: 64,
+  agentSkillBodyMaxChars: 80_000,
+  agentSkillArchiveFilesMax: 100,
+  agentSkillArchiveUncompressedMaxBytes: 6 * 1024 * 1024,
+  agentSkillGithubDirectoriesMax: 100,
+  agentSkillResourcesPerSkill: 50,
+  agentSkillResourceMaxChars: 100_000,
   clauseVariantsPerClause: 10,
   clauseVersionsPerClause: 50,
   templateClausesPerTemplate: 50,
@@ -68,6 +82,10 @@ export const LIMITS = {
   chatContextTextMaxChars: 32_000,
   /** Max number of file attachments per chat message. */
   chatContextFilesPerMessage: 5,
+  /** Default page size for the user's chat thread history. */
+  chatThreadListPageSizeDefault: 50,
+  /** Max page size for the user's chat thread history. */
+  chatThreadListPageSizeMax: 100,
   /** Max characters of TypeScript source the chat run-stella-query tool accepts. */
   chatRunCodeMaxLength: 16_000,
   /** Default page size for readonly chat execute functions. */
@@ -97,6 +115,8 @@ export const FILE_SIZE_LIMITS = {
   document: "50m",
   /** Structured data imports (clause JSON). */
   dataImport: "10m",
+  /** Agent skill packs (`SKILL.md` or a ZIP folder). */
+  skillPack: "2m",
   /** Chat context file attachments. */
   chatContextFile: `${CHAT_CONTEXT_FILE_MAX_MEGABYTES}m`,
 } as const;
@@ -106,6 +126,8 @@ export const FILE_SIZE_LIMITS = {
  * validate before a framework-level t.File() parser runs.
  */
 export const FILE_SIZE_LIMIT_BYTES = {
+  /** Agent skill packs (`SKILL.md` or a ZIP folder). */
+  skillPack: 2 * 1024 * 1024,
   /** Chat context file attachments. */
   chatContextFile: CHAT_CONTEXT_FILE_MAX_MEGABYTES * 1024 * 1024,
 } as const;

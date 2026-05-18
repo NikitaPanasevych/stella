@@ -24,11 +24,29 @@ type ExpensesFilters = {
   billable?: boolean;
 };
 
+type ExpensesListKey = {
+  userId?: string | undefined;
+  matterId?: string | undefined;
+  dateFrom?: string | undefined;
+  dateTo?: string | undefined;
+  status?: ExpenseStatus | undefined;
+  category?: ExpenseCategory | undefined;
+  billable?: boolean | undefined;
+};
+
 export const expensesKeys = {
   all: (workspaceId: string) => ["expenses", workspaceId],
-  list: (workspaceId: string, filters: ExpensesFilters) => [
+  list: (workspaceId: string, key: ExpensesListKey) => [
     ...expensesKeys.all(workspaceId),
-    filters,
+    {
+      userId: key.userId,
+      matterId: key.matterId,
+      dateFrom: key.dateFrom,
+      dateTo: key.dateTo,
+      status: key.status,
+      category: key.category,
+      billable: key.billable,
+    },
   ],
 };
 
@@ -59,6 +77,6 @@ export const expensesOptions = (
         throw toAPIError(response.error);
       }
 
-      return response.data;
+      return response.data.items;
     },
   });

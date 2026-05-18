@@ -67,7 +67,6 @@ const getConditionData = (
   let defaultOperator: NonNullable<Condition>["operator"] | undefined;
   let defaultValue: NonNullable<Condition>["value"] | undefined;
 
-  // oxlint-disable-next-line typescript/switch-exhaustiveness-check
   switch (property.content.type) {
     case "text":
     case "single-select":
@@ -111,7 +110,7 @@ export const PropertyConditions = ({
   const t = useTranslations();
   const { data: properties } = useSuspenseQuery(propertiesOptions(workspaceId));
 
-  const data = (dependencies ?? [])
+  const data = dependencies
     .map((dependency) => {
       const property = properties.find(
         (p) => p.id === dependency.dependsOnPropertyId,
@@ -129,7 +128,7 @@ export const PropertyConditions = ({
         condition !== null,
     );
 
-  const conditionCount = (dependencies ?? []).filter(
+  const conditionCount = dependencies.filter(
     (dependency) => dependency.condition !== null,
   ).length;
 
@@ -211,12 +210,12 @@ const getOperatorOptions = (
   value: string | string[],
   operatorLabels: Record<ConditionOperator, string>,
 ) => {
-  const operatorKeys: ConditionOperator[] =
-    typeof value === "string"
-      ? STRING_OPERATORS
-      : Array.isArray(value)
-        ? STRING_ARRAY_OPERATORS
-        : [];
+  let operatorKeys: ConditionOperator[] = [];
+  if (typeof value === "string") {
+    operatorKeys = STRING_OPERATORS;
+  } else if (Array.isArray(value)) {
+    operatorKeys = STRING_ARRAY_OPERATORS;
+  }
 
   return operatorKeys.map((operator) => ({
     value: operator,

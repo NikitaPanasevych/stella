@@ -31,8 +31,13 @@ import type { ExtensionContext, ExtensionRuntime } from "../types";
 // ============================================================================
 
 function paragraphAttrsToDOMStyle(attrs: ParagraphAttrs): string {
-  let indentLeft = attrs.indentLeft;
-  if (attrs.numPr?.numId && indentLeft === null) {
+  const rawIndentLeft: unknown = Reflect.get(attrs, "indentLeft");
+  let indentLeft =
+    typeof rawIndentLeft === "number" ? rawIndentLeft : undefined;
+  if (
+    attrs.numPr?.numId &&
+    (rawIndentLeft === null || rawIndentLeft === undefined)
+  ) {
     const level = attrs.numPr.ilvl ?? 0;
     indentLeft = (level + 1) * 720;
   }
@@ -49,7 +54,7 @@ function paragraphAttrsToDOMStyle(attrs: ParagraphAttrs): string {
     ...(attrs.lineSpacingRule !== undefined
       ? { lineSpacingRule: attrs.lineSpacingRule }
       : {}),
-    ...(indentLeft !== undefined && indentLeft !== null ? { indentLeft } : {}),
+    ...(indentLeft !== undefined ? { indentLeft } : {}),
     ...(attrs.indentRight !== undefined
       ? { indentRight: attrs.indentRight }
       : {}),
@@ -80,6 +85,11 @@ function paragraphAttrsToDOMStyle(attrs: ParagraphAttrs): string {
 }
 
 function numFmtToClass(numFmt: NumberFormat | undefined): string {
+  // NumberFormat has 70+ values defined by OOXML; this switch
+  // intentionally classifies only the four whose CSS rendering differs.
+  // Every other format (decimal, Asian numerals, etc.) falls through to
+  // the decimal CSS class, which matches Word's display when the
+  // browser font lacks the specialised glyphs.
   switch (numFmt) {
     case "upperRoman":
       return "docx-list-upper-roman";
@@ -350,12 +360,16 @@ const paragraphNodeSpec: NodeSpec = {
     bookmarks: { default: null },
     _originalFormatting: { default: null },
     _sectionProperties: { default: null },
+    _propertyChanges: { default: null },
   },
   parseDOM: [
     {
       tag: "p",
-      getAttrs(dom): ParagraphAttrs {
-        const element = dom as HTMLElement;
+      getAttrs(dom): ParagraphAttrs | false {
+        if (!(dom instanceof HTMLElement)) {
+          return false;
+        }
+        const element = dom;
 
         // Start with data-attribute values (from our own editor's copy/paste)
         const paraId = element.dataset["paraId"];
@@ -860,10 +874,12 @@ export const ParagraphExtension = createNodeExtension({
               if (paragraphNode && paragraphNode.type.name === "paragraph") {
                 // Filter out any existing _Toc bookmarks to avoid duplicates on regeneration
                 const existingBookmarks =
-                  (paragraphNode.attrs["bookmarks"] as {
-                    id: number;
-                    name: string;
-                  }[]) || [];
+                  (paragraphNode.attrs["bookmarks"] as
+                    | {
+                        id: number;
+                        name: string;
+                      }[]
+                    | undefined) ?? [];
                 const filteredBookmarks = existingBookmarks.filter(
                   (b) => !b.name.startsWith("_Toc"),
                 );

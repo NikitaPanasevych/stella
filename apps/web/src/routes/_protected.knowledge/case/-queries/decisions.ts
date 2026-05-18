@@ -6,16 +6,6 @@ import { toSafeId } from "@/lib/safe-id";
 
 const DEFAULT_PAGE_SIZE = 50;
 
-const caseLawDecisionKeys = {
-  all: ["case-law-decisions"],
-  list: (filters?: Record<string, unknown>) => [
-    ...caseLawDecisionKeys.all,
-    "list",
-    filters,
-  ],
-  byId: (decisionId: string) => [...caseLawDecisionKeys.all, decisionId],
-};
-
 export type DecisionListFilters = {
   court?: string;
   country?: string;
@@ -25,6 +15,25 @@ export type DecisionListFilters = {
   language?: string;
   search?: string;
   sourceId?: string;
+};
+
+const caseLawDecisionKeys = {
+  all: ["case-law-decisions"],
+  list: (key: DecisionListFilters) => [
+    ...caseLawDecisionKeys.all,
+    "list",
+    {
+      court: key.court,
+      country: key.country,
+      dateFrom: key.dateFrom,
+      dateTo: key.dateTo,
+      decisionType: key.decisionType,
+      language: key.language,
+      search: key.search,
+      sourceId: key.sourceId,
+    },
+  ],
+  byId: (decisionId: string) => [...caseLawDecisionKeys.all, decisionId],
 };
 
 type FacetBucket = { value: string; count: number };
@@ -132,7 +141,8 @@ export const decisionsInfiniteOptions = (filters: DecisionListFilters = {}) =>
       }
 
       const facets: SearchFacets = null;
-      return { ...response.data, facets };
+      const { items, ...page } = response.data;
+      return { ...page, decisions: items, facets };
     },
     // SAFETY: TanStack Query needs the initial param typed as
     // string | null; `null` alone infers `null`.

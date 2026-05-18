@@ -216,88 +216,105 @@ export const CreateProperty = ({
       }}
       open={dialogOpen}
     >
-      {triggerVariant === "labelled" ? (
-        <DialogTrigger
-          render={
-            <Button
-              className="text-muted-foreground hover:bg-accent gap-1 px-2 font-normal"
-              size="xs"
-              type="button"
-              variant="ghost"
-            />
-          }
-        >
-          <PlusIcon className="size-3" />
-          {t("workspaces.properties.newColumn")}
-        </DialogTrigger>
-      ) : triggerVariant === "panel" ? (
-        <DialogTrigger
-          render={
-            <Button
-              className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-full w-full flex-1 justify-start gap-2 rounded-none border-0 px-3 font-normal before:rounded-none"
-              type="button"
-              variant="ghost"
-            />
-          }
-        >
-          <PlusIcon className="size-4" />
-          <span className="truncate">
-            {t("workspaces.properties.extractEntityType")}
-          </span>
-        </DialogTrigger>
-      ) : triggerVariant === "icon" ? (
-        <DialogTrigger
-          render={
-            <button
-              aria-label={t("workspaces.properties.newColumn")}
-              className="ring-ring focus-visible:ring-offset-background text-muted-foreground flex h-full w-full cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
-              data-add-property-trigger
-              data-row-expansion-ignore
-              onClick={(event) => {
-                event.currentTarget.blur();
-              }}
-              title={t("workspaces.properties.newColumn")}
-              type="button"
-            />
-          }
-        >
-          <PlusIcon className="size-4" />
-        </DialogTrigger>
-      ) : triggerVariant === "blank-cell" ? (
-        <DialogTrigger
-          render={
-            <button
-              aria-label={t("workspaces.properties.newColumn")}
-              className="ring-ring focus-visible:ring-offset-background absolute inset-0 z-10 cursor-pointer border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
-              data-add-property-trigger
-              data-row-expansion-ignore
-              onClick={(event) => {
-                event.currentTarget.blur();
-              }}
-              title={t("workspaces.properties.newColumn")}
-              type="button"
-            />
-          }
-        />
-      ) : triggerVariant === "rail" ? (
-        <DialogTrigger
-          render={
-            <button
-              aria-label={t("workspaces.properties.newColumn")}
-              className="group/add-column-rail ring-ring focus-visible:ring-offset-background absolute inset-0 z-10 cursor-pointer border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
-              data-add-property-trigger
-              data-row-expansion-ignore
-              onClick={(event) => {
-                event.currentTarget.blur();
-              }}
-              title={t("workspaces.properties.newColumn")}
-              type="button"
+      {(() => {
+        if (triggerVariant === "labelled") {
+          return (
+            <DialogTrigger
+              render={
+                <Button
+                  className="text-muted-foreground hover:bg-accent gap-1 px-2 font-normal"
+                  size="xs"
+                  type="button"
+                  variant="ghost"
+                />
+              }
             >
-              <PlusIcon className="text-muted-foreground group-hover/add-column-rail:text-foreground group-focus-visible/add-column-rail:text-foreground absolute start-1/2 top-5 size-4 -translate-x-1/2 -translate-y-1/2 transition-colors rtl:translate-x-1/2" />
-            </button>
-          }
-        />
-      ) : null}
+              <PlusIcon className="size-3" />
+              {t("workspaces.properties.newColumn")}
+            </DialogTrigger>
+          );
+        }
+        if (triggerVariant === "panel") {
+          return (
+            <DialogTrigger
+              render={
+                <Button
+                  className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-full w-full flex-1 justify-start gap-2 rounded-none border-0 px-3 font-normal before:rounded-none"
+                  type="button"
+                  variant="ghost"
+                />
+              }
+            >
+              <PlusIcon className="size-4" />
+              <span className="truncate">
+                {t("workspaces.properties.extractEntityType")}
+              </span>
+            </DialogTrigger>
+          );
+        }
+        if (triggerVariant === "icon") {
+          return (
+            <DialogTrigger
+              render={
+                <button
+                  aria-label={t("workspaces.properties.newColumn")}
+                  className="ring-ring focus-visible:ring-offset-background text-muted-foreground flex h-full w-full cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+                  data-add-property-trigger
+                  data-row-expansion-ignore
+                  onClick={(event) => {
+                    event.currentTarget.blur();
+                  }}
+                  title={t("workspaces.properties.newColumn")}
+                  type="button"
+                />
+              }
+            >
+              <PlusIcon className="size-4" />
+            </DialogTrigger>
+          );
+        }
+        if (triggerVariant === "blank-cell") {
+          return (
+            <DialogTrigger
+              render={
+                <button
+                  aria-label={t("workspaces.properties.newColumn")}
+                  className="ring-ring focus-visible:ring-offset-background absolute inset-0 z-10 cursor-pointer border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+                  data-add-property-trigger
+                  data-row-expansion-ignore
+                  onClick={(event) => {
+                    event.currentTarget.blur();
+                  }}
+                  title={t("workspaces.properties.newColumn")}
+                  type="button"
+                />
+              }
+            />
+          );
+        }
+        if (triggerVariant === "rail") {
+          return (
+            <DialogTrigger
+              render={
+                <button
+                  aria-label={t("workspaces.properties.newColumn")}
+                  className="group/add-column-rail ring-ring focus-visible:ring-offset-background absolute inset-0 z-10 cursor-pointer border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+                  data-add-property-trigger
+                  data-row-expansion-ignore
+                  onClick={(event) => {
+                    event.currentTarget.blur();
+                  }}
+                  title={t("workspaces.properties.newColumn")}
+                  type="button"
+                >
+                  <PlusIcon className="text-muted-foreground group-hover/add-column-rail:text-foreground group-focus-visible/add-column-rail:text-foreground absolute start-1/2 top-5 size-4 -translate-x-1/2 -translate-y-1/2 transition-colors rtl:translate-x-1/2" />
+                </button>
+              }
+            />
+          );
+        }
+        return null;
+      })()}
 
       <DialogPopup className="sm:max-w-[600px]">
         {dialogOpen && (
@@ -379,7 +396,7 @@ const PropertyComposerBody = ({
     editingProperty &&
     (editingProperty.content.type === "single-select" ||
       editingProperty.content.type === "multi-select")
-      ? (editingProperty.content.options ?? [])
+      ? editingProperty.content.options
       : [];
   const initialFallback: string | null =
     editingProperty &&
@@ -940,7 +957,7 @@ const TypeChipsRow = ({
     <div className="flex flex-col gap-1.5">
       <div
         className={cn(
-          "flex items-center gap-1 overflow-x-auto [scrollbar-width:none]",
+          "flex [scrollbar-width:none] items-center gap-1 overflow-x-auto",
           showSeparator && "border-t pt-2",
         )}
       >
@@ -1058,19 +1075,23 @@ type ReadingChipProps = {
   onRemove?: () => void;
 };
 
-const ReadingChip = ({ label, onRemove }: ReadingChipProps) => (
-  <span className="bg-muted/64 group inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11.5px]">
-    <FileTextIcon className="size-3" />
-    {label}
-    {onRemove && (
-      <button
-        aria-label="Remove"
-        className="text-foreground-placeholder hover:text-foreground ms-0.5 -me-1 inline-flex size-3.5 items-center justify-center opacity-0 group-hover:opacity-100"
-        onClick={onRemove}
-        type="button"
-      >
-        <XIcon className="size-2.5" />
-      </button>
-    )}
-  </span>
-);
+const ReadingChip = ({ label, onRemove }: ReadingChipProps) => {
+  const t = useTranslations();
+
+  return (
+    <span className="bg-muted/64 group inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11.5px]">
+      <FileTextIcon className="size-3" />
+      {label}
+      {onRemove && (
+        <button
+          aria-label={t("common.remove")}
+          className="text-foreground-placeholder hover:text-foreground ms-0.5 -me-1 inline-flex size-3.5 items-center justify-center opacity-0 group-hover:opacity-100"
+          onClick={onRemove}
+          type="button"
+        >
+          <XIcon className="size-2.5" />
+        </button>
+      )}
+    </span>
+  );
+};

@@ -196,7 +196,7 @@ const initRedis = async () => {
         }
         if (parsed.scope === "workspace") {
           broadcastLocal(brandPersistedWorkspaceId(parsed.id), parsed.event);
-        } else if (parsed.scope === "organization") {
+        } else {
           broadcastLocalToOrganization(
             brandPersistedOrganizationId(parsed.id),
             parsed.event,
@@ -205,7 +205,7 @@ const initRedis = async () => {
       } catch (error) {
         logger.warn("sse.invalid_redis_message", {
           "error.type": errorTag(error),
-          "message.bytes": message.length,
+          "payload.bytes": message.length,
         });
       }
     });

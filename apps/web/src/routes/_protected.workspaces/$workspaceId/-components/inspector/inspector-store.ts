@@ -44,7 +44,13 @@ export type FileTab = {
    * Auto-flips to `"suggestions"` when the AI queues edits;
    * remembered across switches so the user keeps their place.
    */
-  facet?: "preview" | "metadata" | "versions" | "suggestions" | undefined;
+  facet?:
+    | "preview"
+    | "metadata"
+    | "versions"
+    | "suggestions"
+    | "anonymization"
+    | undefined;
   /**
    * Monotonic counter bumped whenever the facet auto-switches
    * (e.g. AI queued new suggestions). The facet bar reads this to
@@ -529,7 +535,8 @@ const isPdfFacet = (
   value === "preview" ||
   value === "metadata" ||
   value === "versions" ||
-  value === "suggestions";
+  value === "suggestions" ||
+  value === "anonymization";
 
 const isMetadataLane = (value: unknown): value is FileTab["metadataLane"] =>
   value === undefined || value === "closed" || value === "expanded";
@@ -680,9 +687,7 @@ export const useInspectorStore = create<State & Actions>()(
             if (tab.mimeType !== undefined) {
               existing.mimeType = tab.mimeType;
             }
-            if (tab.pdfFileId !== undefined) {
-              existing.pdfFileId = tab.pdfFileId;
-            }
+            existing.pdfFileId = tab.pdfFileId;
             // Bump the render id only when the underlying field
             // changed (version switch); a no-op re-open of the same
             // field shouldn't remount the viewer subtree.
@@ -741,9 +746,7 @@ export const useInspectorStore = create<State & Actions>()(
             if (tab.mimeType !== undefined) {
               existing.mimeType = tab.mimeType;
             }
-            if (tab.pdfFileId !== undefined) {
-              existing.pdfFileId = tab.pdfFileId;
-            }
+            existing.pdfFileId = tab.pdfFileId;
             existing.renderId = uuidv7();
             state.tabs = state.tabs.filter(
               (t, i) =>

@@ -60,7 +60,7 @@ export function resetAutoIdCounter(): void {
 
 /** Get a unique positive integer ID, using the provided value or generating one */
 function getUniqueId(id: string | number | undefined): string {
-  if (id !== undefined && id !== null && id !== "" && id !== 0) {
+  if (id !== undefined && id !== "" && id !== 0) {
     return String(id);
   }
   return String(nextAutoId++);
@@ -655,7 +655,7 @@ function serializeOutline(outline: ShapeOutline | undefined): string {
     return "";
   }
   const attrs: string[] = [];
-  if (outline.width !== null) {
+  if (typeof outline.width === "number") {
     attrs.push(`w="${outline.width}"`);
   }
   if (outline.cap) {
@@ -732,7 +732,11 @@ function serializeWrap(wrap: ImageWrap): string {
     case "behind":
     case "inFront":
       return "<wp:wrapNone/>";
-    default:
+    case "inline":
+      // Inline images don't get a wrap element — they're laid out
+      // inline with text via wp:inline. Caller should not invoke
+      // serializeWrap for inline images, but if it slips through we
+      // fall back to wrapNone (matches Word's degenerate handling).
       return "<wp:wrapNone/>";
   }
 }

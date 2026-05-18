@@ -191,7 +191,7 @@ export const ViewSwitcher = ({
   };
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="flex min-w-0 flex-1 [scrollbar-width:none] items-center gap-1 overflow-x-auto px-2 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       <Tabs value={activeViewId}>
         <TabsList variant="underline">
           {views.map((view) => {
@@ -326,12 +326,11 @@ const ViewTab = ({
         onDragLeave: () => setIsDropTarget(false),
         onDrop: ({ source }) => {
           setIsDropTarget(false);
-          // SAFETY: viewId from our draggable getInitialData
-          onReorderRef.current(
-            // eslint-disable-next-line typescript/no-unsafe-type-assertion
-            source.data["viewId"] as string,
-            id,
-          );
+          const draggedViewId = source.data["viewId"];
+          if (typeof draggedViewId !== "string") {
+            return;
+          }
+          onReorderRef.current(draggedViewId, id);
         },
       }),
     );

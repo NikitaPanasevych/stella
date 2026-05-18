@@ -70,7 +70,7 @@ export const MatterCard = ({
       canCreateMatter={canCreateMatter}
       isPersonal={!workspace.client}
       workspaceId={workspace.id}
-      workspaceName={workspace.name ?? t("workspaces.defaultName")}
+      workspaceName={workspace.name}
     >
       {(rename) => (
         <PreviewCard
@@ -147,15 +147,19 @@ export const MatterCard = ({
             <div className="flex items-center justify-between gap-2 text-xs">
               <div className="text-muted-foreground flex items-center gap-1.5">
                 <span>
-                  {workspace.openTaskCount > 0
-                    ? t("workspaces.tasksCount", {
+                  {(() => {
+                    if (workspace.openTaskCount > 0) {
+                      return t("workspaces.tasksCount", {
                         count: workspace.openTaskCount,
-                      })
-                    : workspace.entityCount > 0
-                      ? t("workspaces.entitiesCount", {
-                          count: workspace.entityCount,
-                        })
-                      : t("workspaces.noItems")}
+                      });
+                    }
+                    if (workspace.entityCount > 0) {
+                      return t("workspaces.entitiesCount", {
+                        count: workspace.entityCount,
+                      });
+                    }
+                    return t("workspaces.noItems");
+                  })()}
                 </span>
                 {deadline && (
                   <>

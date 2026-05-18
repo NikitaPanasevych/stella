@@ -213,7 +213,10 @@ export function FormattingBar(props: FormattingBarProps) {
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
+      if (!(event.target instanceof HTMLElement)) {
+        return;
+      }
+      const target = event.target;
       const editorContainer = editorRef?.current;
       const barContainer = barRef.current;
       if (
@@ -341,7 +344,11 @@ export function FormattingBar(props: FormattingBarProps) {
   }, [inline]);
 
   const handleBarMouseDown = useCallback((e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
+    if (!(e.target instanceof HTMLElement)) {
+      e.preventDefault();
+      return;
+    }
+    const target = e.target;
     if (target.tagName !== "INPUT" && target.tagName !== "SELECT") {
       e.preventDefault();
     }
@@ -382,11 +389,17 @@ export function FormattingBar(props: FormattingBarProps) {
                 <span
                   className="mt-[-2px] h-1 w-4 rounded-sm"
                   style={{
-                    backgroundColor: currentFormatting.color
-                      ? currentFormatting.color.startsWith("#")
-                        ? currentFormatting.color
-                        : `#${currentFormatting.color}`
-                      : "#000000",
+                    backgroundColor: (() => {
+                      if (currentFormatting.color) {
+                        return (() => {
+                          if (currentFormatting.color.startsWith("#")) {
+                            return currentFormatting.color;
+                          }
+                          return `#${currentFormatting.color}`;
+                        })();
+                      }
+                      return "#000000";
+                    })(),
                   }}
                 />
               </div>

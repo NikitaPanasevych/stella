@@ -113,10 +113,10 @@ export function AIAvailabilityProvider({ children }: PropsWithChildren) {
   );
 
   return (
-    <AIAvailabilityContext.Provider value={value}>
+    <AIAvailabilityContext value={value}>
       {children}
       <AIKeyRequiredDialog onOpenChange={setOpen} open={open} />
-    </AIAvailabilityContext.Provider>
+    </AIAvailabilityContext>
   );
 }
 
@@ -172,7 +172,7 @@ export function RequireAIKey({ children }: PropsWithChildren) {
     return null;
   }
 
-  if (!isError && data?.available) {
+  if (!isError && data.available) {
     return <>{children}</>;
   }
 

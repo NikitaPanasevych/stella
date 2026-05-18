@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2Icon, SparklesIcon } from "lucide-react";
+import { useTranslations } from "use-intl";
 import * as v from "valibot";
 import { useShallow } from "zustand/react/shallow";
 
@@ -10,6 +11,7 @@ import { parseDocumentAst } from "@stll/case-law/document-ast";
 
 import { useAIKeyGate } from "@/components/require-ai-key";
 import { useCaseSearchStore } from "@/lib/case-search-store";
+import { pageTitleLiteral } from "@/lib/page-title";
 import { ensureCriticalQueryData } from "@/lib/react-query";
 import type { SafeId } from "@/lib/safe-id";
 import { toSafeId } from "@/lib/safe-id";
@@ -50,10 +52,16 @@ export const Route = createFileRoute("/_protected/knowledge/case/$decisionId")({
       queryClient,
       decisionOptions(extractId(decisionId)),
     ),
+  head: ({ loaderData }) => ({
+    meta: loaderData?.caseNumber
+      ? [{ title: pageTitleLiteral(loaderData.caseNumber) }]
+      : [],
+  }),
   component: DecisionViewer,
 });
 
 function DecisionViewer() {
+  const t = useTranslations();
   const rawParam = Route.useParams({ select: (p) => p.decisionId });
   const initialSearchQuery = Route.useSearch({ select: (s) => s.q });
   const decisionId = extractId(rawParam);
@@ -63,14 +71,6 @@ function DecisionViewer() {
     () => parseDocumentAst(decision.documentAst),
     [decision.documentAst],
   );
-
-  useEffect(() => {
-    const prev = document.title;
-    document.title = `${decision.caseNumber} | stella`;
-    return () => {
-      document.title = prev;
-    };
-  }, [decision.caseNumber]);
 
   const mainRef = useRef<HTMLDivElement>(null);
   const [panelWidth, setPanelWidth] = useState(220);
@@ -234,7 +234,7 @@ function DecisionViewer() {
                     type="button"
                   >
                     <SparklesIcon className="size-3" />
-                    Retry
+                    {t("common.retry")}
                   </button>
                 </div>
               )}
@@ -296,12 +296,14 @@ function DecisionViewer() {
 }
 
 function AnalysisLoader() {
+  const t = useTranslations();
+
   return (
     <div className="flex flex-col gap-4 px-2 pt-4">
       <div className="flex items-center gap-2">
         <Loader2Icon className="text-foreground-muted size-3.5 animate-spin" />
         <span className="text-foreground-strong-muted text-xs font-medium">
-          Analyzing...
+          {t("caseLaw.analyzing")}
         </span>
       </div>
       {[0.6, 0.8, 0.5, 0.7, 0.45, 0.65].map((width, index) => (

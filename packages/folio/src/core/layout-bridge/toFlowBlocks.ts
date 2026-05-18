@@ -29,6 +29,7 @@ import type {
   RunFormatting,
   ParagraphAttrs,
   TabStop,
+  FloatingTablePosition,
 } from "../layout-engine/types";
 import {
   DEFAULT_TEXTBOX_MARGINS,
@@ -198,6 +199,10 @@ function formatCounter(
   if (value <= 0) {
     return "";
   }
+  // NumberFormat is the OOXML w:numFmt enum (70+ values). This switch
+  // handles every format whose counter-rendering differs from a simple
+  // decimal; CJK/Hindi/Arabic counters fall through to the decimal
+  // default. Matches Word's display when those font glyphs are absent.
   switch (format) {
     case "upperRoman":
       return toRoman(value, true);
@@ -252,7 +257,7 @@ function computeListMarker(
   seenNumIds: Set<string>,
 ): string | null {
   const numId = pmAttrs.numPr?.numId;
-  if (numId === null || numId === undefined || numId === 0) {
+  if (numId === undefined || numId === 0) {
     if (pmAttrs.listMarker?.includes("%") && !pmAttrs.listIsBullet) {
       const counters = getLastListCounters(listCounters);
       if (counters) {
@@ -644,10 +649,7 @@ function paragraphRunDefaults(
     defaultTextFormatting.underline &&
     defaultTextFormatting.underline.style !== "none"
   ) {
-    result.underline = {};
-    if (defaultTextFormatting.underline.style) {
-      result.underline.style = defaultTextFormatting.underline.style;
-    }
+    result.underline = { style: defaultTextFormatting.underline.style };
     if (defaultTextFormatting.underline.color) {
       result.underline.color = resolveColor(
         defaultTextFormatting.underline.color,
@@ -853,16 +855,16 @@ function paragraphToRuns(
       // "Exhibit A" / "Section 1.3" in NVCA-style templates) render with no
       // underline. Reuse the same extractor text runs use.
       const ft = child.attrs["fieldType"] as string;
-      const mappedType: FieldRun["fieldType"] =
-        ft === "PAGE"
-          ? "PAGE"
-          : ft === "NUMPAGES"
-            ? "NUMPAGES"
-            : ft === "DATE"
-              ? "DATE"
-              : ft === "TIME"
-                ? "TIME"
-                : "OTHER";
+      let mappedType: FieldRun["fieldType"] = "OTHER";
+      if (ft === "PAGE") {
+        mappedType = "PAGE";
+      } else if (ft === "NUMPAGES") {
+        mappedType = "NUMPAGES";
+      } else if (ft === "DATE") {
+        mappedType = "DATE";
+      } else if (ft === "TIME") {
+        mappedType = "TIME";
+      }
       const fieldFormatting = markDefaultBlackTextColorSource(
         extractRunFormatting(child.marks, theme),
         paraDefaults,
@@ -1200,7 +1202,7 @@ function convertParagraphAttrs(
   } else if (pmAttrs.listMarker) {
     attrs.listMarker = pmAttrs.listMarker;
   }
-  if (pmAttrs.listIsBullet !== undefined && pmAttrs.listIsBullet !== null) {
+  if (pmAttrs.listIsBullet !== undefined) {
     attrs.listIsBullet = pmAttrs.listIsBullet;
   }
   if (pmAttrs.listMarkerHidden) {
@@ -1334,12 +1336,7 @@ export function convertBorderSpecToLayout(
   },
   theme?: Theme | null,
 ): BorderStyle | undefined {
-  if (
-    !border ||
-    !border.style ||
-    border.style === "none" ||
-    border.style === "nil"
-  ) {
+  if (!border.style || border.style === "none" || border.style === "nil") {
     return undefined;
   }
   const result: BorderStyle = {
@@ -1603,11 +1600,9 @@ function convertTable(
       }
     | undefined;
 
-  let floatingPx:
-    | import("../layout-engine/types").FloatingTablePosition
-    | undefined;
+  let floatingPx: FloatingTablePosition | undefined;
   if (floating) {
-    const fp: import("../layout-engine/types").FloatingTablePosition = {};
+    const fp: FloatingTablePosition = {};
     if (floating.horzAnchor) {
       fp.horzAnchor = floating.horzAnchor;
     }
@@ -1748,13 +1743,20 @@ function convertTextBoxNode(
   const textBox: TextBoxBlock = {
     kind: "textBox",
     id: nextBlockId(),
-    width: (attrs["width"] as number) ?? DEFAULT_TEXTBOX_WIDTH,
+    width: (attrs["width"] as number | undefined) ?? DEFAULT_TEXTBOX_WIDTH,
     margins: {
-      top: (attrs["marginTop"] as number) ?? DEFAULT_TEXTBOX_MARGINS.top,
+      top:
+        (attrs["marginTop"] as number | undefined) ??
+        DEFAULT_TEXTBOX_MARGINS.top,
       bottom:
-        (attrs["marginBottom"] as number) ?? DEFAULT_TEXTBOX_MARGINS.bottom,
-      left: (attrs["marginLeft"] as number) ?? DEFAULT_TEXTBOX_MARGINS.left,
-      right: (attrs["marginRight"] as number) ?? DEFAULT_TEXTBOX_MARGINS.right,
+        (attrs["marginBottom"] as number | undefined) ??
+        DEFAULT_TEXTBOX_MARGINS.bottom,
+      left:
+        (attrs["marginLeft"] as number | undefined) ??
+        DEFAULT_TEXTBOX_MARGINS.left,
+      right:
+        (attrs["marginRight"] as number | undefined) ??
+        DEFAULT_TEXTBOX_MARGINS.right,
     },
     content: contentBlocks,
     pmStart: startPos,
@@ -1948,7 +1950,7 @@ function mergeRunInParagraphs(blocks: FlowBlock[]): FlowBlock[] {
     // `<w:specVanish/>` paragraphs flows inline through the first
     // body paragraph that lacks it (Codex PR #258 review).
     while (
-      current?.kind === "paragraph" &&
+      current.kind === "paragraph" &&
       (current as ParagraphBlock).attrs?.runInWithNext &&
       i + 1 < blocks.length
     ) {

@@ -339,15 +339,13 @@ export const createPagePaginatedFetch = <TResponse>(
           skipped: itemsSkipped,
           totalMs,
           fetchMs,
-          ...(total !== undefined && total !== null
-            ? { sourceTotal: total }
-            : {}),
+          ...(total !== undefined ? { sourceTotal: total } : {}),
         });
 
         const fetched = pageStartOffset + fetchedItems.length;
         const hasMore =
           fetchedItems.length >= opts.pageSize &&
-          (total === undefined || total === null || fetched < total);
+          (total === undefined || fetched < total);
 
         // On abort, rewind to the start of the in-flight chunk so the
         // next cycle re-processes it.
@@ -356,15 +354,16 @@ export const createPagePaginatedFetch = <TResponse>(
         // re-processing the already consumed page tail.
         // When exhausted with zero results (overshot past end),
         // step back so the cursor recovers into the valid range.
-        const nextCursor = signal?.aborted
-          ? encodeOffsetCursor(offset + processedThroughIndex)
-          : hasMore
-            ? encodeOffsetCursor(fetched)
-            : fetchedItems.length > 0
-              ? encodeOffsetCursor(offset + items.length)
-              : encodeOffsetCursor(
-                  Math.max(0, pageStartOffset - opts.pageSize),
-                );
+        let nextCursor = encodeOffsetCursor(
+          Math.max(0, pageStartOffset - opts.pageSize),
+        );
+        if (signal?.aborted) {
+          nextCursor = encodeOffsetCursor(offset + processedThroughIndex);
+        } else if (hasMore) {
+          nextCursor = encodeOffsetCursor(fetched);
+        } else if (fetchedItems.length > 0) {
+          nextCursor = encodeOffsetCursor(offset + items.length);
+        }
 
         return { decisions, nextCursor };
       },

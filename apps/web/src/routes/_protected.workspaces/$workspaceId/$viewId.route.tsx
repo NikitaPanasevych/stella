@@ -23,8 +23,10 @@ import { ViewToolbar } from "@/routes/_protected.workspaces/$workspaceId/-compon
 import { chunkJustificationEntityIds } from "@/routes/_protected.workspaces/$workspaceId/-hooks/use-sync-justifications";
 import { useSyncTable } from "@/routes/_protected.workspaces/$workspaceId/-hooks/use-sync-table";
 import {
+  DEFAULT_ENTITY_WINDOW_SIZE,
   entitiesOptions,
   entitiesWindowOptions,
+  filesystemEntitiesOptions,
   useEntitiesOptions,
   visibleEntityFieldIds,
 } from "@/routes/_protected.workspaces/$workspaceId/-queries/entities";
@@ -62,7 +64,7 @@ export const Route = createFileRoute(
         // eslint-disable-next-line no-console
         console.trace(
           `[stella] beforeLoad rejected viewId="${params.viewId}" — redirecting. URL:`,
-          globalThis.location?.href,
+          globalThis.location.href,
         );
       }
       throw redirect({
@@ -162,8 +164,22 @@ export const Route = createFileRoute(
           workspaceId,
           filters: activeView.layout.filters,
           sorts: activeView.layout.sorts,
-          limit: 200,
+          limit: DEFAULT_ENTITY_WINDOW_SIZE,
           excludedKinds: ["folder", "task"],
+          fieldMode,
+          fieldIds,
+        }),
+      );
+      return;
+    }
+
+    if (activeView.layout.type === "filesystem") {
+      await ensureCriticalQueryData(
+        queryClient,
+        filesystemEntitiesOptions({
+          workspaceId,
+          filters: activeView.layout.filters,
+          sorts: activeView.layout.sorts,
           fieldMode,
           fieldIds,
         }),
@@ -192,10 +208,6 @@ export const Route = createFileRoute(
     );
 
     if (entities.entities.length === 0) {
-      return;
-    }
-
-    if (activeView.layout.type === "filesystem") {
       return;
     }
 
@@ -271,7 +283,6 @@ function EntityViewContent({
     return (
       <VisibleFieldEntityViewContent
         activeView={activeView}
-        page={page}
         workspaceId={workspaceId}
       />
     );
@@ -282,6 +293,10 @@ function EntityViewContent({
   }
 
   if (activeView.layout.type === "calendar") {
+    return <ViewShell activeView={activeView} workspaceId={workspaceId} />;
+  }
+
+  if (activeView.layout.type === "kanban") {
     return <ViewShell activeView={activeView} workspaceId={workspaceId} />;
   }
 
@@ -300,44 +315,9 @@ const hasVisibleFieldsLayout = (
 
 function VisibleFieldEntityViewContent({
   activeView,
-  page,
   workspaceId,
-}: EntityViewContentProps & { activeView: VisibleFieldsView }) {
-  const { data: properties } = useSuspenseQuery(propertiesOptions(workspaceId));
-  const fieldIds = visibleEntityFieldIds({
-    hiddenProperties: activeView.layout.hiddenProperties,
-    properties,
-  });
-
-  useSyncTable({
-    workspaceId,
-    filters: activeView.layout.filters ?? [],
-    sorts: activeView.layout.sorts ?? [],
-    page,
-    fieldMode: "visible",
-    fieldIds,
-  });
-
-  const { data } = useSuspenseQuery(
-    useEntitiesOptions({
-      workspaceId,
-      filters: activeView.layout.filters,
-      sorts: activeView.layout.sorts,
-      page,
-      fieldMode: "visible",
-      fieldIds,
-    }),
-  );
-  const totalPages = Math.ceil(data.totalCount / data.pageSize);
-
-  return (
-    <ViewShell
-      activeView={activeView}
-      page={page}
-      totalPages={totalPages}
-      workspaceId={workspaceId}
-    />
-  );
+}: ViewContentProps & { activeView: VisibleFieldsView }) {
+  return <ViewShell activeView={activeView} workspaceId={workspaceId} />;
 }
 
 function FullEntityViewContent({
@@ -347,8 +327,8 @@ function FullEntityViewContent({
 }: EntityViewContentProps) {
   useSyncTable({
     workspaceId,
-    filters: activeView.layout.filters ?? [],
-    sorts: activeView.layout.sorts ?? [],
+    filters: activeView.layout.filters,
+    sorts: activeView.layout.sorts,
     page,
   });
 

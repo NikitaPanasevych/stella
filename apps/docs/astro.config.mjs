@@ -15,22 +15,30 @@ export default defineConfig({
         replacesTitle: true,
       },
       social: [
-        { icon: "github", label: "GitHub", href: "https://github.com/stella/stella" },
+        {
+          icon: "github",
+          label: "GitHub",
+          href: "https://github.com/stella/stella",
+        },
         { icon: "x.com", label: "X", href: "https://x.com/stll_app" },
-        { icon: "linkedin", label: "LinkedIn", href: "https://www.linkedin.com/company/stella-app" },
+        {
+          icon: "linkedin",
+          label: "LinkedIn",
+          href: "https://www.linkedin.com/company/stella-app",
+        },
       ],
       sidebar: [
         {
           label: "Getting Started",
-          autogenerate: { directory: "getting-started" },
+          items: [{ autogenerate: { directory: "getting-started" } }],
         },
         {
           label: "Guides",
-          autogenerate: { directory: "guides" },
+          items: [{ autogenerate: { directory: "guides" } }],
         },
         {
           label: "Reference",
-          autogenerate: { directory: "reference" },
+          items: [{ autogenerate: { directory: "reference" } }],
         },
       ],
       customCss: ["./src/styles/custom.css"],

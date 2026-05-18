@@ -253,6 +253,7 @@ export async function parseDocx(
         rels,
         media,
         raw.commentsExtensibleXml,
+        raw.commentsExtendedXml,
       ),
     );
     if (comments.length > 0) {
@@ -568,17 +569,15 @@ function extractDocumentFontNames(
   }
 
   // Extract fonts from document content (inline run formatting)
-  if (documentBody.content) {
-    for (const block of documentBody.content) {
-      if (block.type === "paragraph") {
-        for (const item of block.content) {
-          if (item.type === "run" && item.formatting?.fontFamily) {
-            if (item.formatting.fontFamily.ascii) {
-              docxFonts.add(item.formatting.fontFamily.ascii);
-            }
-            if (item.formatting.fontFamily.hAnsi) {
-              docxFonts.add(item.formatting.fontFamily.hAnsi);
-            }
+  for (const block of documentBody.content) {
+    if (block.type === "paragraph") {
+      for (const item of block.content) {
+        if (item.type === "run" && item.formatting?.fontFamily) {
+          if (item.formatting.fontFamily.ascii) {
+            docxFonts.add(item.formatting.fontFamily.ascii);
+          }
+          if (item.formatting.fontFamily.hAnsi) {
+            docxFonts.add(item.formatting.fontFamily.hAnsi);
           }
         }
       }

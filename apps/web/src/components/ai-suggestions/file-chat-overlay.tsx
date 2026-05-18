@@ -117,6 +117,24 @@ type PreparedOperation = {
   id: string;
 };
 
+const getOperationComment = (
+  operation: ToolInputOperation,
+): { text: string } | undefined => {
+  switch (operation.type) {
+    case "replaceInBlock":
+    case "insertAfterBlock":
+    case "insertBeforeBlock":
+    case "replaceBlock":
+    case "deleteBlock":
+      return operation.comment ? { text: operation.comment.text } : undefined;
+    case "commentOnBlock":
+      return { text: operation.comment.text };
+    default:
+      operation satisfies never;
+      return undefined;
+  }
+};
+
 const prepareOperations = (
   operations: ApplyActiveDocxEditsInput["operations"],
 ): PreparedOperation[] => {
@@ -124,6 +142,7 @@ const prepareOperations = (
 
   for (const [index, operation] of operations.entries()) {
     const id = `ai-docx-${String(index + 1)}-${uuidv7()}`;
+    const comment = getOperationComment(operation);
     let folio: FolioAIEditOperation;
     switch (operation.type) {
       case "replaceInBlock": {
@@ -134,8 +153,8 @@ const prepareOperations = (
           replace: operation.replace,
           type: operation.type,
         };
-        if (operation.comment) {
-          next.comment = { text: operation.comment.text };
+        if (comment) {
+          next.comment = comment;
         }
         folio = next;
         break;
@@ -151,8 +170,8 @@ const prepareOperations = (
         if (operation.inheritFormatting !== undefined) {
           next.inheritFormatting = operation.inheritFormatting;
         }
-        if (operation.comment) {
-          next.comment = { text: operation.comment.text };
+        if (comment) {
+          next.comment = comment;
         }
         folio = next;
         break;
@@ -167,8 +186,8 @@ const prepareOperations = (
         if (operation.preserveFormatting !== undefined) {
           next.preserveFormatting = operation.preserveFormatting;
         }
-        if (operation.comment) {
-          next.comment = { text: operation.comment.text };
+        if (comment) {
+          next.comment = comment;
         }
         folio = next;
         break;
@@ -179,8 +198,8 @@ const prepareOperations = (
           id,
           type: operation.type,
         };
-        if (operation.comment) {
-          next.comment = { text: operation.comment.text };
+        if (comment) {
+          next.comment = comment;
         }
         folio = next;
         break;
@@ -212,14 +231,10 @@ const prepareOperations = (
 const inputOperationSeverity = (
   operation: ToolInputOperation,
 ): FolioAIEditSeverity | "unspecified" =>
-  "severity" in operation && operation.severity !== undefined
-    ? operation.severity
-    : "unspecified";
+  "severity" in operation ? operation.severity : "unspecified";
 
 const inputOperationArea = (operation: ToolInputOperation): string =>
-  "area" in operation && operation.area !== undefined
-    ? operation.area
-    : REVIEW_UNSPECIFIED_AREA;
+  "area" in operation ? operation.area : REVIEW_UNSPECIFIED_AREA;
 
 type SnapshotBlock = {
   id: string;
@@ -746,29 +761,28 @@ const FileChatOverlayInner = ({
     openIfAIUnavailable();
   }, [openIfAIUnavailable]);
 
-  const filePlaceholder =
-    activeFile === undefined
-      ? activeExternal
-        ? t("chat.externalSourcePlaceholder", {
-            title: activeExternal.title,
-          })
-        : undefined
-      : t(
-          activeFile.editable
-            ? "chat.editableFilePlaceholder"
-            : "chat.filePlaceholder",
-          { fileName: activeFile.fileName },
-        );
-  const filePlaceholderAction =
-    activeFile === undefined
-      ? activeExternal
-        ? t("chat.externalSourcePlaceholderAction")
-        : undefined
-      : t(
-          activeFile.editable
-            ? "chat.editableFilePlaceholderAction"
-            : "chat.filePlaceholderAction",
-        );
+  let filePlaceholder: string | undefined;
+  let filePlaceholderAction: string | undefined;
+  if (activeFile === undefined) {
+    if (activeExternal) {
+      filePlaceholder = t("chat.externalSourcePlaceholder", {
+        title: activeExternal.title,
+      });
+      filePlaceholderAction = t("chat.externalSourcePlaceholderAction");
+    }
+  } else {
+    filePlaceholder = t(
+      activeFile.editable
+        ? "chat.editableFilePlaceholder"
+        : "chat.filePlaceholder",
+      { fileName: activeFile.fileName },
+    );
+    filePlaceholderAction = t(
+      activeFile.editable
+        ? "chat.editableFilePlaceholderAction"
+        : "chat.filePlaceholderAction",
+    );
+  }
 
   const editorController = useChatEditor({
     placeholder: filePlaceholder,
@@ -849,7 +863,7 @@ const FileChatOverlayInner = ({
     <>
       {panelOpen && hasThreadContent && (
         <div
-          aria-label="AI thread"
+          aria-label={t("chat.aiThread")}
           className={cn(
             // Sizing rules: grows with content but caps at ~45dvh
             // / 380px so the panel doesn't dominate the file

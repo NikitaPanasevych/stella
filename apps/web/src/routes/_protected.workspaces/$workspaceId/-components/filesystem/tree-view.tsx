@@ -65,6 +65,7 @@ import { EmptyState } from "@/routes/_protected.workspaces/$workspaceId/-compone
 import { flattenFilesystemRows } from "@/routes/_protected.workspaces/$workspaceId/-components/filesystem/tree-virtualization";
 import { InlineEdit } from "@/routes/_protected.workspaces/$workspaceId/-components/inline-edit";
 import { useInspectorStore } from "@/routes/_protected.workspaces/$workspaceId/-components/inspector/inspector-store";
+import type { FileTab } from "@/routes/_protected.workspaces/$workspaceId/-components/inspector/inspector-store";
 import {
   AuthorCell,
   LastUpdatedCell,
@@ -79,7 +80,7 @@ import {
 } from "@/routes/_protected.workspaces/$workspaceId/-mutations/entities";
 import { useUpdateView } from "@/routes/_protected.workspaces/$workspaceId/-mutations/views";
 import {
-  useEntitiesOptions,
+  useFilesystemEntitiesOptions,
   visibleEntityFieldIds,
 } from "@/routes/_protected.workspaces/$workspaceId/-queries/entities";
 import { propertiesOptions } from "@/routes/_protected.workspaces/$workspaceId/-queries/properties";
@@ -166,6 +167,9 @@ const resolveExtraColumns = (
   properties: WorkspaceProperty[],
   metadataLabels: Record<string, string>,
 ): ExtraColumn[] => {
+  const propertyById = new Map(
+    properties.map((property) => [property.id, property]),
+  );
   const ids = [
     ...FILESYSTEM_METADATA_IDS,
     ...properties.map((p) => p.id),
@@ -181,7 +185,7 @@ const resolveExtraColumns = (
         label: metadataLabels[id] ?? id,
       });
     } else {
-      const prop = properties.find((p) => p.id === id);
+      const prop = propertyById.get(id);
       // Skip file-type properties — the Name column already
       // shows the filename, so a "Documents" column is redundant.
       if (prop && prop.content.type !== "file") {
@@ -331,10 +335,10 @@ export const FilesystemView = ({ workspaceId, view }: FilesystemViewProps) => {
   }, []);
 
   // Background right-click context menu
-  const [bgContextOpen, setBgContextOpen] = useState(false);
   const [bgContextAnchor, setBgContextAnchor] = useState<{
     getBoundingClientRect: () => DOMRect;
   } | null>(null);
+  const isBgContextOpen = bgContextAnchor !== null;
 
   const { filters, sorts, hiddenProperties } = view.layout;
   const primarySort = sorts.at(0) ?? null;
@@ -364,19 +368,15 @@ export const FilesystemView = ({ workspaceId, view }: FilesystemViewProps) => {
   );
 
   const { data: entityData } = useSuspenseQuery(
-    useEntitiesOptions({
+    useFilesystemEntitiesOptions({
       workspaceId,
       filters,
       sorts,
-      page: 1,
       fieldMode: "visible",
       fieldIds,
     }),
   );
-  const data = useMemo(
-    () => entityData.entities.filter((e) => e.kind !== "task"),
-    [entityData.entities],
-  );
+  const data = entityData.entities;
 
   // Build a lookup for drag preview data from selected entities.
   const entityMap = useMemo(() => {
@@ -587,7 +587,6 @@ export const FilesystemView = ({ workspaceId, view }: FilesystemViewProps) => {
     setBgContextAnchor({
       getBoundingClientRect: () => new DOMRect(x, y, 0, 0),
     });
-    setBgContextOpen(true);
   }, []);
 
   const handleFolderCreated = useCallback((entityId: string) => {
@@ -735,50 +734,58 @@ export const FilesystemView = ({ workspaceId, view }: FilesystemViewProps) => {
                     <Fragment key={crumb.id}>
                       <BreadcrumbSeparator />
                       <BreadcrumbItem>
-                        {isEditingCrumb ? (
-                          <InlineEdit
-                            inputClassName="h-5 w-40 text-xs"
-                            onCancel={() => setEditingEntityId(null)}
-                            onChange={setBreadcrumbEditValue}
-                            onCommit={() => {
-                              const trimmed = breadcrumbEditValue.trim();
-                              setEditingEntityId(null);
-                              if (trimmed && trimmed !== crumb.name) {
-                                renameEntity.mutate({
-                                  workspaceId,
-                                  entityId: crumb.id,
-                                  name: trimmed,
-                                });
-                              }
-                            }}
-                            value={breadcrumbEditValue}
-                          />
-                        ) : isLast ? (
-                          <button
-                            className="text-xs font-medium"
-                            onClick={() => {
-                              void navigateToFolder();
-                            }}
-                            onDoubleClick={(e) => {
-                              e.stopPropagation();
-                              setBreadcrumbEditValue(crumb.name);
-                              setEditingEntityId(crumb.id);
-                            }}
-                            type="button"
-                          >
-                            {crumb.name}
-                          </button>
-                        ) : (
-                          <button
-                            className="text-muted-foreground hover:text-foreground text-xs"
-                            onClick={() => {
-                              void navigateToFolder(crumb.id);
-                            }}
-                            type="button"
-                          >
-                            {crumb.name}
-                          </button>
-                        )}
+                        {(() => {
+                          if (isEditingCrumb) {
+                            return (
+                              <InlineEdit
+                                inputClassName="h-5 w-40 text-xs"
+                                onCancel={() => setEditingEntityId(null)}
+                                onChange={setBreadcrumbEditValue}
+                                onCommit={() => {
+                                  const trimmed = breadcrumbEditValue.trim();
+                                  setEditingEntityId(null);
+                                  if (trimmed && trimmed !== crumb.name) {
+                                    renameEntity.mutate({
+                                      workspaceId,
+                                      entityId: crumb.id,
+                                      name: trimmed,
+                                    });
+                                  }
+                                }}
+                                value={breadcrumbEditValue}
+                              />
+                            );
+                          }
+                          if (isLast) {
+                            return (
+                              <button
+                                className="text-xs font-medium"
+                                onClick={() => {
+                                  void navigateToFolder();
+                                }}
+                                onDoubleClick={(e) => {
+                                  e.stopPropagation();
+                                  setBreadcrumbEditValue(crumb.name);
+                                  setEditingEntityId(crumb.id);
+                                }}
+                                type="button"
+                              >
+                                {crumb.name}
+                              </button>
+                            );
+                          }
+                          return (
+                            <button
+                              className="text-muted-foreground hover:text-foreground text-xs"
+                              onClick={() => {
+                                void navigateToFolder(crumb.id);
+                              }}
+                              type="button"
+                            >
+                              {crumb.name}
+                            </button>
+                          );
+                        })()}
                       </BreadcrumbItem>
                     </Fragment>
                   );
@@ -899,12 +906,11 @@ export const FilesystemView = ({ workspaceId, view }: FilesystemViewProps) => {
         anchor={bgContextAnchor}
         onFolderCreated={handleFolderCreated}
         onOpenChange={(o) => {
-          setBgContextOpen(o);
           if (!o) {
             setBgContextAnchor(null);
           }
         }}
-        open={bgContextOpen}
+        open={isBgContextOpen}
         parentId={currentFolderId}
         showTaskOption={false}
         render={
@@ -946,10 +952,10 @@ const ColumnHeaderCell = ({
 }: ColumnHeaderCellProps) => {
   const t = useTranslations();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [contextOpen, setContextOpen] = useState(false);
   const [contextAnchor, setContextAnchor] = useState<{
     getBoundingClientRect: () => DOMRect;
   } | null>(null);
+  const isContextOpen = contextAnchor !== null;
   const isActive = activeSort?.propertyId === propertyId;
   const SortIcon = activeSort?.desc ? ArrowDownIcon : ArrowUpIcon;
 
@@ -990,7 +996,6 @@ const ColumnHeaderCell = ({
       setContextAnchor({
         getBoundingClientRect: () => new DOMRect(x, y, 0, 0),
       });
-      setContextOpen(true);
     },
     [onHide],
   );
@@ -1026,12 +1031,11 @@ const ColumnHeaderCell = ({
       {onHide && (
         <Menu
           onOpenChange={(open) => {
-            setContextOpen(open);
             if (!open) {
               setContextAnchor(null);
             }
           }}
-          open={contextOpen}
+          open={isContextOpen}
         >
           <MenuTrigger
             render={
@@ -1047,7 +1051,7 @@ const ColumnHeaderCell = ({
             <MenuItem
               onClick={() => {
                 onHide();
-                setContextOpen(false);
+                setContextAnchor(null);
               }}
             >
               <EyeOffIcon className="size-4" />
@@ -1106,7 +1110,18 @@ const FilesystemRow = ({
   getSelectedEntities,
 }: FilesystemRowProps) => {
   const t = useTranslations();
-  const [contextOpen, setContextOpen] = useState(false);
+  // RowActions can open via two paths: a trigger-button click (anchors
+  // the menu to the ellipsis button) or a right-click on the row (anchors
+  // to the cursor position). Model both with a discriminated union so the
+  // anchor and open state stay in sync.
+  const [menuState, setMenuState] = useState<
+    | { type: "closed" }
+    | { type: "trigger" }
+    | { type: "context"; anchor: { getBoundingClientRect: () => DOMRect } }
+  >({ type: "closed" });
+  const isContextOpen = menuState.type !== "closed";
+  const contextAnchor =
+    menuState.type === "context" ? menuState.anchor : undefined;
   const [editValue, setEditValue] = useState("");
   const isFolder = node.kind === "folder";
   const isEditing = editingEntityId === node.entityId;
@@ -1140,10 +1155,6 @@ const FilesystemRow = ({
     onStartEditing(null);
   };
 
-  const [contextAnchor, setContextAnchor] = useState<{
-    getBoundingClientRect: () => DOMRect;
-  } | null>(null);
-
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1153,10 +1164,12 @@ const FilesystemRow = ({
     }
     const x = e.clientX;
     const y = e.clientY;
-    setContextAnchor({
-      getBoundingClientRect: () => new DOMRect(x, y, 0, 0),
+    setMenuState({
+      type: "context",
+      anchor: {
+        getBoundingClientRect: () => new DOMRect(x, y, 0, 0),
+      },
     });
-    setContextOpen(true);
   };
 
   // Drag + drop support via pragmatic-drag-and-drop.
@@ -1355,17 +1368,27 @@ const FilesystemRow = ({
       ) : (
         <span className="w-3.5 shrink-0" />
       )}
-      {isFolder ? (
-        expanded ? (
-          <FolderOpenIcon className="text-muted-foreground size-4 shrink-0" />
-        ) : (
-          <FolderIcon className="text-muted-foreground size-4 shrink-0" />
-        )
-      ) : file?.mimeType ? (
-        <DocumentIcon className="size-4 shrink-0" mimeType={file.mimeType} />
-      ) : (
-        <FileIcon className="text-muted-foreground size-4 shrink-0" />
-      )}
+      {(() => {
+        if (isFolder) {
+          if (expanded) {
+            return (
+              <FolderOpenIcon className="text-muted-foreground size-4 shrink-0" />
+            );
+          }
+          return (
+            <FolderIcon className="text-muted-foreground size-4 shrink-0" />
+          );
+        }
+        if (file?.mimeType) {
+          return (
+            <DocumentIcon
+              className="size-4 shrink-0"
+              mimeType={file.mimeType}
+            />
+          );
+        }
+        return <FileIcon className="text-muted-foreground size-4 shrink-0" />;
+      })()}
       {isEditing ? (
         <InlineEdit
           inputClassName="w-48"
@@ -1433,23 +1456,23 @@ const FilesystemRow = ({
   const openInInspector = (() => {
     if (isBulkSelected) {
       const entities = getSelectedEntities(selectedIds);
-      const navigables = entities
-        .map((e) => {
-          const f = getFirstFile(e);
-          if (!f || !isFileDisplayable(f)) {
-            return null;
-          }
-          return {
-            id: f.fieldId,
-            entityId: e.entityId,
-            label: getEntityName(e),
-            mimeType: f.mimeType,
-            pdfFileId: f.pdfFileId,
-            propertyId: f.propertyId,
-            workspaceId,
-          };
-        })
-        .filter((x) => x !== null);
+      const navigables: Omit<FileTab, "type">[] = [];
+      for (const entity of entities) {
+        const candidateFile = getFirstFile(entity);
+        if (!candidateFile || !isFileDisplayable(candidateFile)) {
+          continue;
+        }
+
+        navigables.push({
+          id: candidateFile.fieldId,
+          entityId: entity.entityId,
+          label: getEntityName(entity),
+          mimeType: candidateFile.mimeType,
+          pdfFileId: candidateFile.pdfFileId,
+          propertyId: candidateFile.propertyId,
+          workspaceId,
+        });
+      }
       if (navigables.length === 0) {
         return undefined;
       }
@@ -1463,7 +1486,7 @@ const FilesystemRow = ({
     if (node.kind === "task") {
       return () => useInspectorStore.getState().openTask(node.entityId, name);
     }
-    if (navigable && file !== undefined) {
+    if (navigable) {
       return () =>
         useInspectorStore.getState().openFile({
           id: file.fieldId,
@@ -1483,16 +1506,17 @@ const FilesystemRow = ({
   // selectedIds before RowActions re-renders. Using a ref preserves
   // the selection snapshot from when the menu was triggered.
   const bulkEntitiesRef = useRef<WorkspaceEntity[] | undefined>(undefined);
-  if (contextOpen && isBulkSelected) {
+  if (isContextOpen && isBulkSelected) {
     bulkEntitiesRef.current = getSelectedEntities(selectedIds);
-  } else if (!contextOpen) {
+  } else if (!isContextOpen) {
     bulkEntitiesRef.current = undefined;
   }
-  const bulkEntities = contextOpen
-    ? bulkEntitiesRef.current
-    : isBulkSelected
-      ? getSelectedEntities(selectedIds)
-      : undefined;
+  let bulkEntities: WorkspaceEntity[] | undefined;
+  if (isContextOpen) {
+    bulkEntities = bulkEntitiesRef.current;
+  } else if (isBulkSelected) {
+    bulkEntities = getSelectedEntities(selectedIds);
+  }
 
   const rowActionsNode = (
     <span className="flex justify-end">
@@ -1501,14 +1525,17 @@ const FilesystemRow = ({
         entity={node}
         onOpen={openInInspector}
         onOpenChange={(o) => {
-          setContextOpen(o);
           if (!o) {
-            setContextAnchor(null);
+            setMenuState({ type: "closed" });
+          } else if (menuState.type === "closed") {
+            // Trigger-button click: Base UI positions the menu against
+            // the trigger element, so no virtual anchor is needed.
+            setMenuState({ type: "trigger" });
           }
         }}
         onRename={startEditing}
         onSubfolderCreated={onSubfolderCreated}
-        open={contextOpen}
+        open={isContextOpen}
         selectedEntities={bulkEntities}
         workspaceId={workspaceId}
       />

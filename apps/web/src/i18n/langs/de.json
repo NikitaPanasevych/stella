@@ -251,6 +251,7 @@
         "reasoning": "Argumentation"
       }
     },
+    "analyzing": "Analyse läuft...",
     "columns": {
       "caseNumber": "Aktenzeichen",
       "country": "Land",
@@ -291,16 +292,23 @@
       "nalusDisclaimer": "Source: NALUS, Constitutional Court of the Czech Republic. Free of charge. This electronic version is not authentic.",
       "popularName": "Populärer Name",
       "sections": "Abschnitte",
-      "source": "Nur Schätzungen · Preise aus",
+      "source": "Quelle",
+      "sourceFields": {
+        "decisionCategory": "Entscheidungskategorie",
+        "publishedOnWeb": "Im Web veröffentlicht"
+      },
       "statutes": "Applicable statutes",
       "viewOriginal": "Quelle anzeigen"
     }
   },
   "chat": {
+    "acceptAllCount": "Alle übernehmen ({count})",
     "actionExpand": {
       "toastDescription": "Full-page chat lands with persisted threads.",
       "toastTitle": "Full view not yet available"
     },
+    "aiPrompt": "KI-Nachrichtenfeld",
+    "aiThread": "KI-Konversation",
     "anonymizedMode": "Anonymisierter KI-Modus",
     "anonymizedModeDisabled": "Anonymisierter KI-Modus ist aus",
     "anonymizedModeEnabled": "Anonymisierter KI-Modus ist an",
@@ -324,6 +332,7 @@
       "externalMcpDescription": "Only the information needed for this tool call will be sent.",
       "externalMcpQuestion": "Can Stella send this request to {provider}?"
     },
+    "askAnything": "Beliebige Frage stellen",
     "askUser": {
       "custom": "Eigene Antwort",
       "default": "Standard",
@@ -357,15 +366,20 @@
     "editableFilePlaceholder": "Chat über {fileName} oder bearbeiten",
     "editableFilePlaceholderAction": "Chatten oder bearbeiten",
     "editorLoading": "Loading editor…",
+    "emptyThreadDescription": "Fragen Sie zu dieser Sache, entwerfen Sie Text oder bitten Sie um eine kurze Recherche.",
+    "emptyThreadTitle": "Konversation starten",
     "externalSourcePlaceholder": "Chat über {title}",
     "externalSourcePlaceholderAction": "Chat über",
     "extractingContent": "Inhalt wird extrahiert...",
     "filePlaceholder": "Chat über {fileName}",
     "filePlaceholderAction": "Chat über",
     "fileTooLarge": "Datei überschreitet das Limit von {maxSize}",
+    "focusSuggestion": "Vorschlag fokussieren: {topic}",
     "folioCitationFallback": "S. {n}",
     "greeting": "Woran möchten Sie arbeiten?",
     "greetingSubtitle": "Beginnen Sie mit einer Sache, einem Dokument oder einer einfachen Frage.",
+    "hideThread": "Konversation ausblenden",
+    "inDocument": "Im Dokument",
     "landing": {
       "lastAccessedMatters": "Zuletzt geöffnete Sachen",
       "noMatters": "Noch keine Sachen",
@@ -390,7 +404,12 @@
     "moveToMain": "In Hauptansicht verschieben",
     "moveToSide": "In Seitenleiste verschieben",
     "newChat": "Neuer Chat",
+    "noPromptPresetOnly": "Keine Nachricht, nur Vorlage",
     "noThreads": "Noch keine Konversationen",
+    "openCitation": "Fundstelle {label} öffnen",
+    "openThread": "Konversation öffnen",
+    "pageNumber": "Seite {page}",
+    "pastedChars": "Eingefügt · {count} Zeichen",
     "pastedText": {
       "expand": "Vollständigen Text anzeigen",
       "fromClipboard": "{count, plural, one {# Zeichen eingefügt} other {# Zeichen eingefügt}}",
@@ -407,14 +426,29 @@
       },
       "tryOne": "Probiere einen davon zum Start"
     },
+    "removeSuggestion": "(entfernen)",
     "resend": "Erneut senden",
+    "resizeThread": "Konversation vergrößern oder verkleinern",
     "send": "Nachricht senden",
     "sendError": "Beim Senden deiner Nachricht ist ein Problem aufgetreten. Wende dich an den Support, wenn der Fehler weiterhin auftritt.",
     "sendErrorAnonymizationBlocked": "Stella konnte einen Anhang nicht anonymisieren, daher wurde nichts gesendet. Entferne die Datei oder sende diese Nachricht ohne Anonymisierung.",
     "sendErrorInsufficientCredits": "Der KI-Provider benötigt mehr Guthaben. Bitte deinen Workspace-Admin, das Konto aufzuladen.",
     "sendErrorProviderUnavailable": "Der KI-Provider ist vorübergehend nicht verfügbar. Bitte versuche es gleich noch einmal.",
     "sendErrorQuotaExhausted": "Das Kontingent des KI-Providers ist aufgebraucht. Versuche es gleich noch einmal oder bitte deinen Workspace-Admin, das Paket zu erweitern.",
+    "sendPrompt": "Nachricht senden",
     "sendWithoutAnonymization": "Ohne Anonymisierung senden",
+    "sources": "Quellen:",
+    "stopResponse": "Stoppen",
+    "suggestionSeverity": {
+      "style": "Stil",
+      "substantive": "Inhaltlich",
+      "typo": "Tippfehler"
+    },
+    "suggestionStatus": {
+      "accepted": "Angewendet",
+      "rejected": "Abgelehnt",
+      "stale": "Veraltet"
+    },
     "thinking": "Arbeite mit Kontext",
     "threads": "Verlauf",
     "tool": {
@@ -538,6 +572,28 @@
     "actions": "Aktionen",
     "add": "Hinzufügen",
     "all": "Alle",
+    "anonymizationLabels": {
+      "address": "Adresse",
+      "bankAccountNumber": "Bankkontonummer",
+      "birthNumber": "Geburtsnummer",
+      "creditCardNumber": "Kreditkartennummer",
+      "date": "Datum",
+      "dateOfBirth": "Geburtsdatum",
+      "emailAddress": "E-Mail-Adresse",
+      "iban": "IBAN",
+      "identityCardNumber": "Personalausweisnummer",
+      "landParcel": "Flurstück",
+      "miscellaneous": "Sonstiges",
+      "monetaryAmount": "Geldbetrag",
+      "nationalIdentificationNumber": "Nationale Identifikationsnummer",
+      "organization": "Organisation",
+      "passportNumber": "Reisepassnummer",
+      "person": "Person",
+      "phoneNumber": "Telefonnummer",
+      "registrationNumber": "Registernummer",
+      "socialSecurityNumber": "Sozialversicherungsnummer",
+      "taxIdentificationNumber": "Steuer-Identifikationsnummer"
+    },
     "cancel": "Abbrechen",
     "captions": "Captions",
     "caseLaw": "Rechtsprechung",
@@ -585,6 +641,7 @@
     "error": "Fehler",
     "expenses": "Ausgaben",
     "filter": "Filtern",
+    "goBack": "Zurück",
     "history": "Verlauf",
     "invite": "Einladen",
     "invoices": "Rechnungen",
@@ -614,6 +671,7 @@
     "properties": "Eigenschaften",
     "reconnecting": "Verbindung wird wiederhergestellt…",
     "reference": "Referenz",
+    "remove": "Entfernen",
     "rename": "Umbenennen",
     "required": "Erforderlich",
     "retry": "Erneut versuchen",
@@ -1067,6 +1125,32 @@
     "unsupportedDocxEditTitle": "Editing blocked"
   },
   "inspector": {
+    "anonymization": {
+      "addAction": "Add",
+      "addPlaceholder": "Term to anonymize",
+      "contextMenuAddAction": "Anonymize selection",
+      "deleteAction": "Delete term",
+      "detectedHeading": "In diesem Dokument erkannt ({count})",
+      "detectingMatches": "Detecting entities in this document…",
+      "emptyState": "No workspace-specific terms yet. Add one above.",
+      "ignoreAction": "In diesem Dokument ignorieren",
+      "ignoreScopeAlways": "Immer ignorieren",
+      "ignoreScopeDocument": "In dieser Akte ignorieren",
+      "ignoreScopeMenuAriaLabel": "Geltungsbereich",
+      "ignoreScopeWorkspace": "In diesem Arbeitsbereich ignorieren",
+      "labelPickerAriaLabel": "Entity label",
+      "labelPickerEmpty": "No matching label.",
+      "labelPickerPlaceholder": "Label",
+      "matchCount": "{count} entities highlighted in this document.",
+      "matchedWorkspaceTermsHeading": "Matching workspace terms ({count})",
+      "noMatchesInDocument": "None of your workspace terms appear in this document.",
+      "openFullViewHint": "Öffnen Sie die Datei in der Vollansicht, um die Anonymisierungs-Markierungen und die Trefferzahlen pro Dokument zu sehen.",
+      "restoreAction": "In diesem Dokument wiederherstellen",
+      "termAddedToast": "Added \"{value}\" to workspace anonymization terms.",
+      "termMatchCountAriaLabel": "Matched {count} times in this document.",
+      "title": "Anonymization vocabulary",
+      "workspaceTermsHeading": "Workspace terms ({count})"
+    },
     "external": {
       "confirmDescription": "Sie sind dabei, eine externe Website zu besuchen.",
       "confirmTitle": "Externen Link öffnen?",
@@ -1075,6 +1159,7 @@
       "unavailable": "Die verlinkte Website erlaubt keine sichere Vorschau. Wenn das Tool Dokumenttext zurückgegeben hat, erscheint er hier; andernfalls öffnen Sie das Original."
     },
     "facet": {
+      "anonymization": "Anonymization",
       "preview": "Preview",
       "previewInFullViewToast": "Preview is the main view here. Click the minimize button to see it alongside metadata."
     },
@@ -1104,11 +1189,13 @@
     "agentSkills": {
       "builtInBadge": "Integriert",
       "builtInSection": "Integrierte Skills",
+      "chooseFile": "Datei auswählen oder hierher ziehen",
       "deleteConfirmDescription": "„{name}“ wird aus diesem Arbeitsbereich entfernt.",
       "deleteConfirmTitle": "Skill löschen?",
       "description": "Installiere SKILL.md-Pakete, die dem Chat spezialisierte Methoden und schreibgeschützte Ressourcen hinzufügen.",
       "disableSkill": "Skill deaktivieren",
       "disabled": "Deaktiviert",
+      "dropFile": "SKILL.md oder .zip hier ablegen",
       "emptyDescription": "Lade eine SKILL.md-Datei oder einen gezippten Skill-Ordner hoch oder importiere eine öffentliche GitHub-Skill-URL.",
       "emptyTitle": "Installiere deinen ersten Skill",
       "enableSkill": "Skill aktivieren",
@@ -1122,6 +1209,7 @@
       "scope": "Sichtbarkeit",
       "scopePrivate": "Nur ich",
       "scopeTeam": "Alle in der Organisation",
+      "selectedFile": "Ausgewählt: {name}",
       "sourceUpload": "Hochgeladen",
       "sourceUrl": "Öffentliche URL",
       "teamSection": "Team-Skills",
@@ -1528,6 +1616,23 @@
       "activeMembers": "Active members",
       "ai": "AI configuration",
       "aiDescription": "Bring your own API key or configure data sovereignty region",
+      "anonymization": {
+        "addAction": "Hinzufügen",
+        "addPlaceholder": "Immer zu maskierender Begriff (z. B. Kanzleiname)",
+        "deleteAction": "Begriff löschen",
+        "description": "Verwalten Sie die kanzleiweite Sperrliste der Begriffe, die das Anonymisierungs-Pipeline immer maskiert, und importieren Sie eine Startliste aus CSV, TXT oder JSON.",
+        "emptyState": "Noch keine kanzleiweiten Begriffe. Fügen Sie oben einen hinzu oder importieren Sie eine Liste.",
+        "entriesHeading": "Kanzleiweite Begriffe ({count})",
+        "importAction": "Importieren",
+        "importHint": "CSV (canonical,label,variants), TXT (eine pro Zeile) oder JSON",
+        "importParseError": "Diese Datei konnte nicht gelesen werden. Verwenden Sie CSV, TXT oder JSON.",
+        "importSuccessToast": "{count} Begriffe importiert.",
+        "labelPickerAriaLabel": "Entitätstyp",
+        "labelPickerEmpty": "Kein passender Typ.",
+        "labelPickerPlaceholder": "Typ",
+        "termAddedToast": "„{value}“ wurde zur kanzleiweiten Sperrliste hinzugefügt.",
+        "title": "Anonymisierung"
+      },
       "matterNumbering": "Matter numbering",
       "matterNumberingDescription": "Configure how new matter reference numbers are generated",
       "membersDescription": "Manage who has access to this organization",
@@ -1585,6 +1690,7 @@
     "noLinks": "Keine verknüpften Einträge",
     "noSubtasks": "Keine Unteraufgaben",
     "noTasksAssigned": "Keine Aufgaben zugewiesen",
+    "notFound": "Aufgabe nicht gefunden",
     "overdue": "Überfällig",
     "priority": "Priorität",
     "priorityValues": {
@@ -1719,6 +1825,7 @@
     "deleteSelection": "Auswahl löschen",
     "deleteWorkspace": "Akte löschen",
     "deleteWorkspaceConfirmDescription": "Möchten Sie diese Akte wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "deletedItem": "Gelöscht: {name}",
     "deletingWorkspace": "Akte wird gelöscht",
     "documentsCount": "{count, plural, one {# Dokument} other {# Dokumente}}",
     "dropToUploadFiles": "Dateien zum Hochladen ablegen",

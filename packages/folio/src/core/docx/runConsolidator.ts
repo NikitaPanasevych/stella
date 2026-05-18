@@ -348,8 +348,14 @@ export function consolidateRuns(runs: Run[]): Run[] {
   let current: Run | null = null;
 
   for (const run of runs) {
-    // Skip empty runs
+    // Empty runs do not serialize to visible content, but they can mark where a
+    // skipped OOXML payload belongs. Treat them as merge boundaries so later
+    // enrichment can reinsert that payload in the original position.
     if (run.content.length === 0) {
+      if (current !== null) {
+        result.push(current);
+        current = null;
+      }
       continue;
     }
 
@@ -447,7 +453,7 @@ export function consolidateParagraphContent(
  * @returns New paragraph with consolidated runs
  */
 export function consolidateParagraph(paragraph: Paragraph): Paragraph {
-  if (!paragraph.content || paragraph.content.length === 0) {
+  if (paragraph.content.length === 0) {
     return paragraph;
   }
 
@@ -473,9 +479,7 @@ export function countRuns(paragraph: Paragraph): number {
     }
   }
 
-  if (paragraph.content) {
-    countInContent(paragraph.content);
-  }
+  countInContent(paragraph.content);
 
   return count;
 }

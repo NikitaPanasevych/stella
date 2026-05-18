@@ -1,7 +1,11 @@
 import { useEffectEvent, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   HistoryIcon,
@@ -43,6 +47,7 @@ import {
   chatThreadOptions,
   groupedChatThreadsOptions,
   invalidateGroupedChatThreads,
+  mergeGroupedChatThreadPages,
 } from "@/routes/_protected.chat/-queries";
 import { useInspectorStore } from "@/routes/_protected.workspaces/$workspaceId/-components/inspector/inspector-store";
 import { workspacesNavigationOptions } from "@/routes/_protected.workspaces/-queries";
@@ -69,7 +74,13 @@ function ChatIndex() {
   const pinnedOrder = usePinnedStore((s) => s.pinnedOrder);
   const { data: workspacesData } = useQuery(workspacesNavigationOptions);
   const workspaces = workspacesData?.workspaces;
-  const { data: groupedThreads } = useQuery(groupedChatThreadsOptions());
+  const { data: groupedThreadPages } = useInfiniteQuery(
+    groupedChatThreadsOptions(),
+  );
+  const groupedThreads = useMemo(
+    () => mergeGroupedChatThreadPages(groupedThreadPages?.pages),
+    [groupedThreadPages?.pages],
+  );
   const anonymized = useChatAnonymized(threadRef);
   const setAnonymized = useSetChatAnonymized(threadRef);
   const getSendMode = useEffectEvent(() => getChatSendMode(threadRef));
@@ -124,7 +135,7 @@ function ChatIndex() {
 
   const recentChats = useMemo(() => {
     const threads: RecentChat[] = [];
-    for (const thread of groupedThreads?.global ?? []) {
+    for (const thread of groupedThreads.global) {
       threads.push({
         scope: "global",
         id: thread.id,
@@ -132,7 +143,7 @@ function ChatIndex() {
         updatedAt: thread.updatedAt,
       });
     }
-    for (const workspace of groupedThreads?.workspaces ?? []) {
+    for (const workspace of groupedThreads.workspaces) {
       for (const thread of workspace.threads) {
         threads.push({
           scope: "workspace",
@@ -154,12 +165,8 @@ function ChatIndex() {
   }, [groupedThreads]);
 
   const selectPrompt = (prompt: ChatPrompt) => {
-    const editor = controller.editor;
-    if (!editor) {
-      return;
-    }
-    editor.commands.setContent(prompt.body);
-    editor.commands.focus("end");
+    controller.setContent(prompt.body);
+    controller.focus();
   };
 
   const moveToSide = () => {
@@ -290,7 +297,7 @@ function ChatIndex() {
             heading={
               <Link
                 className="text-muted-foreground hover:text-foreground focus-visible:ring-ring flex items-center gap-2 rounded-md px-1 text-xs font-semibold tracking-widest uppercase transition-colors outline-none focus-visible:ring-2"
-                to="/knowledge/skills"
+                to="/knowledge/prompts"
               >
                 <SlashPromptIcon />
                 {t("chat.landing.prompts")}

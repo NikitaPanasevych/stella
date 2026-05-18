@@ -251,6 +251,7 @@
         "reasoning": "Uvažovanie"
       }
     },
+    "analyzing": "Analyzujem...",
     "columns": {
       "caseNumber": "Spisová značka",
       "country": "Krajina",
@@ -291,16 +292,23 @@
       "nalusDisclaimer": "Zdroj: NALUS, Ústavný súd Českej republiky. Bezplatne. Táto elektronická verzia nie je autentická; autentické sú iba originály so štátnym znakom a podpisom oprávnenej osoby.",
       "popularName": "Populárny názov",
       "sections": "Časti",
-      "source": "Iba odhady · ceny z",
+      "source": "Zdroj",
+      "sourceFields": {
+        "decisionCategory": "Kategória rozhodnutia",
+        "publishedOnWeb": "Zverejnené na webe"
+      },
       "statutes": "Aplikované predpisy",
       "viewOriginal": "Zobraziť zdroj"
     }
   },
   "chat": {
+    "acceptAllCount": "Prijať všetko ({count})",
     "actionExpand": {
       "toastDescription": "Zobrazenie chatu na celú stránku s uloženými vláknami už čoskoro.",
       "toastTitle": "Plné zobrazenie zatiaľ nie je dostupné"
     },
+    "aiPrompt": "Pole správy pre AI",
+    "aiThread": "Konverzácia s AI",
     "anonymizedMode": "Anonymizovaný režim AI",
     "anonymizedModeDisabled": "Anonymizovaný režim AI je vypnutý",
     "anonymizedModeEnabled": "Anonymizovaný režim AI je zapnutý",
@@ -324,6 +332,7 @@
       "externalMcpDescription": "Odošlú sa iba informácie potrebné pre tento dotaz.",
       "externalMcpQuestion": "Môže Stella odoslať tento dotaz do {provider}?"
     },
+    "askAnything": "Opýtajte sa na čokoľvek",
     "askUser": {
       "custom": "Napísať vlastnú",
       "default": "Predvolená",
@@ -357,15 +366,20 @@
     "editableFilePlaceholder": "Chatovať alebo upraviť {fileName}",
     "editableFilePlaceholderAction": "Chatovať alebo upraviť",
     "editorLoading": "Načítava sa editor…",
+    "emptyThreadDescription": "Opýtajte sa na túto vec, pripravte text alebo požiadajte o krátku rešeršnú poznámku.",
+    "emptyThreadTitle": "Začať konverzáciu",
     "externalSourcePlaceholder": "Chatovať o {title}",
     "externalSourcePlaceholderAction": "Chatovať o",
     "extractingContent": "Extrahovanie obsahu...",
     "filePlaceholder": "Chatovať o {fileName}",
     "filePlaceholderAction": "Chatovať o",
     "fileTooLarge": "Súbor prekračuje limit {maxSize}",
+    "focusSuggestion": "Zamerať návrh: {topic}",
     "folioCitationFallback": "str. {n}",
     "greeting": "Na čom chcete pracovať?",
     "greetingSubtitle": "Začnite spisom, dokumentom alebo obyčajnou otázkou.",
+    "hideThread": "Skryť konverzáciu",
+    "inDocument": "V dokumente",
     "landing": {
       "lastAccessedMatters": "Naposledy otvorené spisy",
       "noMatters": "Zatiaľ žiadne spisy",
@@ -390,7 +404,12 @@
     "moveToMain": "Presunúť do hlavného zobrazenia",
     "moveToSide": "Presunúť do bočného panela",
     "newChat": "Nový chat",
+    "noPromptPresetOnly": "Bez správy, iba predvoľba",
     "noThreads": "Zatiaľ žiadne konverzácie",
+    "openCitation": "Otvoriť citáciu {label}",
+    "openThread": "Otvoriť konverzáciu",
+    "pageNumber": "Strana {page}",
+    "pastedChars": "Vložené · {count} znakov",
     "pastedText": {
       "expand": "Zobraziť celý text",
       "fromClipboard": "Vložené {count, plural, one {# znak} few {# znaky} other {# znakov}}",
@@ -407,14 +426,29 @@
       },
       "tryOne": "Začni s jedným z týchto"
     },
+    "removeSuggestion": "(odstrániť)",
     "resend": "Odoslať znova",
+    "resizeThread": "Zmeniť veľkosť konverzácie",
     "send": "Odoslať správu",
     "sendError": "Pri odosielaní správy nastal problém. Ak chyba pretrváva, kontaktujte podporu.",
     "sendErrorAnonymizationBlocked": "Stella nedokázala anonymizovať jednu prílohu, takže sa nič neodoslalo. Odstráňte súbor alebo odošlite správu bez anonymizácie.",
     "sendErrorInsufficientCredits": "AI poskytovateľ potrebuje doplniť kredity. Požiadajte správcu pracovného priestoru o navýšenie zostatku.",
     "sendErrorProviderUnavailable": "AI poskytovateľ je dočasne nedostupný. Skúste to prosím o chvíľu znova.",
     "sendErrorQuotaExhausted": "Kvóta AI poskytovateľa je vyčerpaná. Skúste to o chvíľu znova alebo požiadajte správcu pracovného priestoru o navýšenie plánu.",
+    "sendPrompt": "Odoslať správu",
     "sendWithoutAnonymization": "Odoslať bez anonymizácie",
+    "sources": "Zdroje:",
+    "stopResponse": "Zastaviť",
+    "suggestionSeverity": {
+      "style": "Štýl",
+      "substantive": "Vecné",
+      "typo": "Preklep"
+    },
+    "suggestionStatus": {
+      "accepted": "Použité",
+      "rejected": "Odmietnuté",
+      "stale": "Zastarané"
+    },
     "thinking": "Pracujem s kontextom",
     "threads": "História",
     "tool": {
@@ -538,6 +572,28 @@
     "actions": "Akcie",
     "add": "Pridať",
     "all": "Všetko",
+    "anonymizationLabels": {
+      "address": "Adresa",
+      "bankAccountNumber": "Číslo bankového účtu",
+      "birthNumber": "Rodné číslo",
+      "creditCardNumber": "Číslo platobnej karty",
+      "date": "Dátum",
+      "dateOfBirth": "Dátum narodenia",
+      "emailAddress": "E-mailová adresa",
+      "iban": "IBAN",
+      "identityCardNumber": "Číslo občianskeho preukazu",
+      "landParcel": "Parcela",
+      "miscellaneous": "Ostatné",
+      "monetaryAmount": "Peňažná suma",
+      "nationalIdentificationNumber": "Národné identifikačné číslo",
+      "organization": "Organizácia",
+      "passportNumber": "Číslo pasu",
+      "person": "Osoba",
+      "phoneNumber": "Telefónne číslo",
+      "registrationNumber": "IČO",
+      "socialSecurityNumber": "Číslo sociálneho poistenia",
+      "taxIdentificationNumber": "DIČ"
+    },
     "cancel": "Zrušiť",
     "captions": "Captions",
     "caseLaw": "Judikatúra",
@@ -585,6 +641,7 @@
     "error": "Chyba",
     "expenses": "Výdavky",
     "filter": "Filtrovať",
+    "goBack": "Späť",
     "history": "História",
     "invite": "Pozvať",
     "invoices": "Faktúry",
@@ -614,6 +671,7 @@
     "properties": "Vlastnosti",
     "reconnecting": "Obnovenie spojenia…",
     "reference": "Referencia",
+    "remove": "Odstrániť",
     "rename": "Premenovať",
     "required": "Povinné",
     "retry": "Skúsiť znova",
@@ -1067,6 +1125,32 @@
     "unsupportedDocxEditTitle": "Úpravy zablokované"
   },
   "inspector": {
+    "anonymization": {
+      "addAction": "Add",
+      "addPlaceholder": "Term to anonymize",
+      "contextMenuAddAction": "Anonymize selection",
+      "deleteAction": "Delete term",
+      "detectedHeading": "Nájdené v dokumente ({count})",
+      "detectingMatches": "Detecting entities in this document…",
+      "emptyState": "No workspace-specific terms yet. Add one above.",
+      "ignoreAction": "Ignorovať v tomto dokumente",
+      "ignoreScopeAlways": "Vždy ignorovať",
+      "ignoreScopeDocument": "Ignorovať v tomto spise",
+      "ignoreScopeMenuAriaLabel": "Rozsah ignorovania",
+      "ignoreScopeWorkspace": "Ignorovať v tomto spise",
+      "labelPickerAriaLabel": "Entity label",
+      "labelPickerEmpty": "No matching label.",
+      "labelPickerPlaceholder": "Label",
+      "matchCount": "{count} entities highlighted in this document.",
+      "matchedWorkspaceTermsHeading": "Matching workspace terms ({count})",
+      "noMatchesInDocument": "None of your workspace terms appear in this document.",
+      "openFullViewHint": "Otvorte súbor v plnom zobrazení, aby ste videli anonymizačné zvýraznenie a počty nájdených pojmov v dokumente.",
+      "restoreAction": "Obnoviť v tomto dokumente",
+      "termAddedToast": "Added \"{value}\" to workspace anonymization terms.",
+      "termMatchCountAriaLabel": "Matched {count} times in this document.",
+      "title": "Anonymization vocabulary",
+      "workspaceTermsHeading": "Workspace terms ({count})"
+    },
     "external": {
       "confirmDescription": "Chystáte sa navštíviť externý web.",
       "confirmTitle": "Otvoriť externý odkaz?",
@@ -1075,6 +1159,7 @@
       "unavailable": "Odkazovaný web nepovoľuje bezpečný náhľad. Ak nástroj vrátil text dokumentu, zobrazí sa tu; inak otvorte originál."
     },
     "facet": {
+      "anonymization": "Anonymization",
       "preview": "Náhľad",
       "previewInFullViewToast": "Náhľad je tu hlavným zobrazením. Kliknutím na tlačidlo minimalizácie ho zobrazíte vedľa metadát."
     },
@@ -1104,11 +1189,13 @@
     "agentSkills": {
       "builtInBadge": "Vstavané",
       "builtInSection": "Vstavané zručnosti",
+      "chooseFile": "Vyberte súbor alebo ho sem presuňte",
       "deleteConfirmDescription": "Zručnosť „{name}“ bude odstránená z tohto pracovného priestoru.",
       "deleteConfirmTitle": "Odstrániť zručnosť?",
       "description": "Nainštalujte balíky SKILL.md, ktoré do chatu pridajú špecializované postupy a zdroje iba na čítanie.",
       "disableSkill": "Vypnúť zručnosť",
       "disabled": "Vypnuté",
+      "dropFile": "Presuňte sem SKILL.md alebo .zip",
       "emptyDescription": "Nahrajte súbor SKILL.md, zazipovaný priečinok zručnosti alebo importujte verejnú URL zručnosti z GitHubu.",
       "emptyTitle": "Nainštalujte prvú zručnosť",
       "enableSkill": "Zapnúť zručnosť",
@@ -1122,6 +1209,7 @@
       "scope": "Viditeľnosť",
       "scopePrivate": "Iba ja",
       "scopeTeam": "Všetci v organizácii",
+      "selectedFile": "Vybraté: {name}",
       "sourceUpload": "Nahraté",
       "sourceUrl": "Verejná URL",
       "teamSection": "Tímové zručnosti",
@@ -1528,6 +1616,23 @@
       "activeMembers": "Aktívni členovia",
       "ai": "Konfigurácia AI",
       "aiDescription": "Použite vlastný API kľúč alebo nakonfigurujte región dátovej suverenity",
+      "anonymization": {
+        "addAction": "Pridať",
+        "addPlaceholder": "Pojem, ktorý sa má vždy maskovať (napr. názov firmy)",
+        "deleteAction": "Zmazať pojem",
+        "description": "Spravujte firemný zoznam pojmov, ktoré anonymizačný kanál vždy zamaskuje, a importujte úvodný zoznam z CSV, TXT alebo JSON",
+        "emptyState": "Žiadne firemné pojmy. Pridajte ich vyššie alebo importujte zoznam.",
+        "entriesHeading": "Firemné pojmy ({count})",
+        "importAction": "Importovať",
+        "importHint": "CSV (canonical,label,variants), TXT (jeden na riadok) alebo JSON",
+        "importParseError": "Súbor sa nedá prečítať. Použite CSV, TXT alebo JSON.",
+        "importSuccessToast": "Importovaných {count} pojmov.",
+        "labelPickerAriaLabel": "Typ entity",
+        "labelPickerEmpty": "Žiadny vyhovujúci typ.",
+        "labelPickerPlaceholder": "Typ",
+        "termAddedToast": "Pojem „{value}“ bol pridaný do firemného zoznamu.",
+        "title": "Anonymizácia"
+      },
       "matterNumbering": "Číslovanie spisov",
       "matterNumberingDescription": "Nakonfigurujte, ako sa generujú referenčné čísla nových spisov",
       "membersDescription": "Spravujte, kto má prístup k tejto organizácii a všetky čakajúce pozvánky",
@@ -1585,6 +1690,7 @@
     "noLinks": "Žiadne prepojené položky",
     "noSubtasks": "Žiadne podúlohy",
     "noTasksAssigned": "Nemáte priradené žiadne úlohy",
+    "notFound": "Úloha sa nenašla",
     "overdue": "Po termíne",
     "priority": "Priorita",
     "priorityValues": {
@@ -1719,6 +1825,7 @@
     "deleteSelection": "Vymazať výber",
     "deleteWorkspace": "Vymazať spis",
     "deleteWorkspaceConfirmDescription": "Naozaj chcete vymazať tento spis? Túto akciu nemožno vrátiť.",
+    "deletedItem": "Odstránené: {name}",
     "deletingWorkspace": "Mazanie spisu",
     "documentsCount": "{count, plural, one {# dokument} few {# dokumenty} other {# dokumentov}}",
     "dropToUploadFiles": "Presuňte súbory pre nahranie",

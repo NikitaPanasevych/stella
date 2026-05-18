@@ -158,11 +158,13 @@ function createInitialState(
   externalPlugins: Plugin[] = [],
 ): EditorState {
   const activeSchema = manager?.getSchema() ?? schema;
-  const doc = document
-    ? styles === undefined || styles === null
-      ? toProseDoc(document)
-      : toProseDoc(document, { styles })
-    : createEmptyDoc();
+  let doc = createEmptyDoc();
+  if (document) {
+    doc =
+      styles === undefined || styles === null
+        ? toProseDoc(document)
+        : toProseDoc(document, { styles });
+  }
 
   // External plugins go first so they can intercept before extension keymaps
   // (e.g. suggestion mode must handle Backspace/Delete before deleteSelection)
@@ -391,8 +393,11 @@ const HiddenProseMirrorComponent = forwardRef<
       // Use the document's package id or a hash of its structure
       // For simplicity, we compare based on whether it's a different document object
       // and whether it has different metadata
-      const meta = doc.package?.properties;
-      return `${meta?.created || ""}-${meta?.modified || ""}-${meta?.title || ""}`;
+      const meta = doc.package.properties;
+      const created = meta?.created ? String(meta.created) : "";
+      const modified = meta?.modified ? String(meta.modified) : "";
+      const title = meta?.title ?? "";
+      return `${created}-${modified}-${title}`;
     };
 
     const currentDocId = getDocumentId(document);
@@ -461,8 +466,9 @@ const HiddenProseMirrorComponent = forwardRef<
       },
 
       blur() {
-        if (viewRef.current?.hasFocus()) {
-          (viewRef.current.dom as HTMLElement).blur();
+        const dom = viewRef.current?.dom;
+        if (viewRef.current?.hasFocus() && dom instanceof HTMLElement) {
+          dom.blur();
         }
       },
 

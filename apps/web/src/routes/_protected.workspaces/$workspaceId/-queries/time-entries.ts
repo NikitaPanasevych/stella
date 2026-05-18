@@ -19,11 +19,31 @@ type TimeEntriesFilters = {
   hasActiveTimer?: boolean;
 };
 
+type TimeEntriesListKey = {
+  userId?: string | undefined;
+  matterId?: string | undefined;
+  dateFrom?: string | undefined;
+  dateTo?: string | undefined;
+  status?: TimeEntryStatus | undefined;
+  source?: TimeEntrySource | undefined;
+  billable?: boolean | undefined;
+  hasActiveTimer?: boolean | undefined;
+};
+
 export const timeEntriesKeys = {
   all: (workspaceId: string) => ["timeEntries", workspaceId],
-  list: (workspaceId: string, filters: TimeEntriesFilters) => [
+  list: (workspaceId: string, key: TimeEntriesListKey) => [
     ...timeEntriesKeys.all(workspaceId),
-    filters,
+    {
+      userId: key.userId,
+      matterId: key.matterId,
+      dateFrom: key.dateFrom,
+      dateTo: key.dateTo,
+      status: key.status,
+      source: key.source,
+      billable: key.billable,
+      hasActiveTimer: key.hasActiveTimer,
+    },
   ],
   byId: (workspaceId: string, id: string) => [
     ...timeEntriesKeys.all(workspaceId),
@@ -60,7 +80,7 @@ export const timeEntriesOptions = (
         throw toAPIError(response.error);
       }
 
-      return response.data;
+      return response.data.items;
     },
   });
 
@@ -84,7 +104,7 @@ export const activeTimerOptions = (workspaceId: string) =>
         throw toAPIError(response.error);
       }
 
-      return response.data?.at(0) ?? null;
+      return response.data.items.at(0) ?? null;
     },
     refetchInterval: 60_000,
   });

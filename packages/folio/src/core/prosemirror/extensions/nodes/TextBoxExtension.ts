@@ -69,8 +69,11 @@ export const TextBoxExtension = createNodeExtension({
     parseDOM: [
       {
         tag: "div.docx-textbox",
-        getAttrs(dom): TextBoxAttrs {
-          const el = dom as HTMLElement;
+        getAttrs(dom): TextBoxAttrs | false {
+          if (!(dom instanceof HTMLElement)) {
+            return false;
+          }
+          const el = dom;
           const d = el.dataset;
           return {
             ...(d["width"] ? { width: Number(d["width"]) } : {}),
@@ -140,16 +143,16 @@ export const TextBoxExtension = createNodeExtension({
       if (attrs.outlineStyle) {
         domAttrs["data-outline-style"] = attrs.outlineStyle;
       }
-      if (attrs.marginTop !== null) {
+      if (typeof attrs.marginTop === "number") {
         domAttrs["data-margin-top"] = String(attrs.marginTop);
       }
-      if (attrs.marginBottom !== null) {
+      if (typeof attrs.marginBottom === "number") {
         domAttrs["data-margin-bottom"] = String(attrs.marginBottom);
       }
-      if (attrs.marginLeft !== null) {
+      if (typeof attrs.marginLeft === "number") {
         domAttrs["data-margin-left"] = String(attrs.marginLeft);
       }
-      if (attrs.marginRight !== null) {
+      if (typeof attrs.marginRight === "number") {
         domAttrs["data-margin-right"] = String(attrs.marginRight);
       }
       if (attrs.verticalAlign) {

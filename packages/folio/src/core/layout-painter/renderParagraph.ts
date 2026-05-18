@@ -237,12 +237,12 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
     ).webkitTextFillColor = "transparent";
   }
   if (run.emphasisMark) {
-    const variant =
-      run.emphasisMark === "comma"
-        ? "filled sesame"
-        : run.emphasisMark === "circle"
-          ? "filled circle"
-          : "filled dot";
+    let variant = "filled dot";
+    if (run.emphasisMark === "comma") {
+      variant = "filled sesame";
+    } else if (run.emphasisMark === "circle") {
+      variant = "filled circle";
+    }
     const position =
       run.emphasisMark === "underDot" ? "under right" : "over right";
     element.style.textEmphasis = variant;
@@ -323,7 +323,7 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
     if (run.changeDate) {
       element.dataset["changeDate"] = run.changeDate;
     }
-    if (run.changeRevisionId !== null) {
+    if (run.changeRevisionId !== undefined) {
       element.dataset["revisionId"] = String(run.changeRevisionId);
     }
   }
@@ -353,7 +353,7 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
     if (run.changeDate) {
       element.dataset["changeDate"] = run.changeDate;
     }
-    if (run.changeRevisionId !== null) {
+    if (run.changeRevisionId !== undefined) {
       element.dataset["revisionId"] = String(run.changeRevisionId);
     }
   }
@@ -612,8 +612,9 @@ function renderFieldRun(
     case "TIME":
       text = new Date().toLocaleTimeString();
       break;
-    // OTHER fields use fallback
-    default:
+    case "OTHER":
+      // Any field we don't recognise — render the cached fallback Word
+      // last computed (already assigned to `text` above).
       break;
   }
 
@@ -1005,7 +1006,7 @@ export function renderLine(
     // - With hanging indent (firstLineIndentPx < 0): starts at leftIndent + firstLineIndent
     // - With first-line indent (firstLineIndentPx > 0): starts at leftIndent + firstLineIndent
     // - No indent: starts at leftIndent
-    const firstLineIndentPx = options?.firstLineIndentPx ?? 0;
+    const firstLineIndentPx = options.firstLineIndentPx ?? 0;
     currentX = leftIndentPx + firstLineIndentPx;
   } else {
     // Non-first lines start at the left indent position
@@ -1279,7 +1280,11 @@ export function renderParagraphFragment(
   const borders = block.attrs?.borders;
   if (borders) {
     const borderStyleToCss = (style?: string): string => {
-      // Map OOXML border styles to CSS
+      // Map OOXML border styles to CSS. The OOXML border-style enum has
+      // 40+ decorative variants (threeDEmboss, wavyDouble, etc.); the
+      // common ones below cover ~99% of real-world documents, and the
+      // default falls back to a plain solid line — matches how Word
+      // degrades on platforms without the specialised glyphs.
       switch (style) {
         case "single":
           return "solid";
@@ -1437,9 +1442,9 @@ export function renderParagraphFragment(
     if (isFirstLine) {
       const hasHangingIndent = indent?.hanging && indent.hanging > 0;
       const hasFirstLineIndent = indent?.firstLine && indent.firstLine > 0;
-      if (hasHangingIndent && indent?.hanging) {
+      if (hasHangingIndent && indent.hanging) {
         lineAvailableWidth = availableWidth + indent.hanging;
-      } else if (hasFirstLineIndent && indent?.firstLine) {
+      } else if (hasFirstLineIndent && indent.firstLine) {
         lineAvailableWidth = availableWidth - indent.firstLine;
       }
     }
@@ -1496,17 +1501,17 @@ export function renderParagraphFragment(
       if (indentLeft !== 0 && hasHanging) {
         // Hanging indent: first line starts at (indentLeft - hanging)
         lineEl.style.paddingLeft = `${Math.max(indentLeft, 0)}px`;
-        lineEl.style.textIndent = `-${indent?.hanging ?? 0}px`;
+        lineEl.style.textIndent = `-${indent.hanging ?? 0}px`;
       } else if (indentLeft !== 0 && hasFirstLine) {
         // First line indent: first line starts at (indentLeft + firstLine)
         lineEl.style.paddingLeft = `${Math.max(indentLeft, 0)}px`;
-        lineEl.style.textIndent = `${indent?.firstLine ?? 0}px`;
+        lineEl.style.textIndent = `${indent.firstLine ?? 0}px`;
       } else if (indentLeft > 0) {
         // Just left indent, no special first line treatment
         lineEl.style.paddingLeft = `${indentLeft}px`;
       } else if (hasFirstLine) {
         // No left indent, but has first line indent
-        lineEl.style.textIndent = `${indent?.firstLine ?? 0}px`;
+        lineEl.style.textIndent = `${indent.firstLine ?? 0}px`;
       }
       // No hanging without left indent (handled by firstLineOffset in measurement)
     } else if (indentLeft > 0) {
@@ -1514,7 +1519,7 @@ export function renderParagraphFragment(
       lineEl.style.paddingLeft = `${indentLeft}px`;
     } else if (hasHanging) {
       // Hanging indent without left indent: body lines need padding = hanging
-      lineEl.style.paddingLeft = `${indent?.hanging ?? 0}px`;
+      lineEl.style.paddingLeft = `${indent.hanging ?? 0}px`;
     }
 
     if (indentRight > 0) {
@@ -1529,7 +1534,7 @@ export function renderParagraphFragment(
     if (
       isFirstLine &&
       block.attrs?.listMarker &&
-      !block.attrs?.listMarkerHidden
+      !block.attrs.listMarkerHidden
     ) {
       // Override padding for list first lines.
       //
@@ -1551,11 +1556,12 @@ export function renderParagraphFragment(
         indent?.hanging !== undefined && indent.hanging > 0;
       const markerHasFirstLine =
         indent?.firstLine !== undefined && indent.firstLine > 0;
-      const markerPos = markerHasHanging
-        ? Math.max(0, indentLeft - (indent?.hanging ?? 0))
-        : markerHasFirstLine
-          ? indentLeft + (indent?.firstLine ?? 0)
-          : indentLeft;
+      let markerPos = indentLeft;
+      if (markerHasHanging) {
+        markerPos = Math.max(0, indentLeft - (indent.hanging ?? 0));
+      } else if (markerHasFirstLine) {
+        markerPos = indentLeft + (indent.firstLine ?? 0);
+      }
       lineEl.style.paddingLeft = `${markerPos}px`;
       lineEl.style.textIndent = "0"; // Don't use textIndent for lists
 

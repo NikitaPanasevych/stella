@@ -304,12 +304,11 @@ const MatterItem = ({
         onDragLeave: () => setIsDropTarget(false),
         onDrop: ({ source }) => {
           setIsDropTarget(false);
-          // SAFETY: matterId is always a string; set by our own draggable getInitialData.
-          // eslint-disable-next-line typescript/no-unsafe-type-assertion
-          const draggedId = source.data["matterId"] as string;
-          if (draggedId !== ws.id) {
-            onReorderRef.current?.(draggedId, ws.id);
+          const draggedId = source.data["matterId"];
+          if (typeof draggedId !== "string" || draggedId === ws.id) {
+            return;
           }
+          onReorderRef.current?.(draggedId, ws.id);
         },
       }),
     );
@@ -911,12 +910,12 @@ export function AppSidebar(props: AppSidebarProps) {
       style={{ ...sidebarStyle, ...props.style }}
     >
       {/* Stella logo header */}
-      <SidebarHeader>
+      <SidebarHeader className="h-12 border-b p-0">
         <div
           className={
             isCollapsed
-              ? "flex items-center justify-center"
-              : "flex items-center justify-between ps-2"
+              ? "flex h-full items-center justify-center"
+              : "flex h-full items-center justify-between ps-3 pe-2"
           }
         >
           {!isCollapsed && <StellaWordmark className="h-5 w-auto" />}
@@ -975,17 +974,23 @@ export function AppSidebar(props: AppSidebarProps) {
                     <span>{t("common.matters")}</span>
                   </Link>
                 </SidebarMenuButton>
-                {showNavBadges ? (
-                  <NavBadge digit={3} />
-                ) : canCreateMatter ? (
-                  <SidebarMenuAction
-                    onClick={handleCreateWorkspace}
-                    showOnHover
-                    title={t("navigation.newMatter")}
-                  >
-                    <PlusIcon />
-                  </SidebarMenuAction>
-                ) : null}
+                {(() => {
+                  if (showNavBadges) {
+                    return <NavBadge digit={3} />;
+                  }
+                  if (canCreateMatter) {
+                    return (
+                      <SidebarMenuAction
+                        onClick={handleCreateWorkspace}
+                        showOnHover
+                        title={t("navigation.newMatter")}
+                      >
+                        <PlusIcon />
+                      </SidebarMenuAction>
+                    );
+                  }
+                  return null;
+                })()}
               </SidebarMenuItem>
             </NavContextMenu>
             <NavContextMenu config={fixedNavTargets[3].contextMenu}>

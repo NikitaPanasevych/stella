@@ -1,9 +1,9 @@
-export {
-  DocxEditor,
-  type DocxEditorProps,
-  type DocxEditorRef,
-  type EditorMode,
-} from "./components/DocxEditor";
+export { DocxEditor } from "./components/DocxEditor";
+export type {
+  DocxEditorProps,
+  DocxEditorRef,
+} from "./components/DocxEditor.props";
+export type { EditorMode } from "./components/hooks/useEditorMode";
 export {
   FormattingBar,
   type FormattingBarProps,
@@ -72,3 +72,10 @@ export {
   setActiveCitationMeta,
   type AICitationRange,
 } from "./core/prosemirror/plugins/aiCitationDecorations";
+export {
+  anonymizationDecorationsKey,
+  getAnonymizationMatches,
+  setAnonymizationTermsMeta,
+  type AnonymizationMatch,
+  type AnonymizationTerm,
+} from "./core/prosemirror/plugins/anonymizationDecorations";

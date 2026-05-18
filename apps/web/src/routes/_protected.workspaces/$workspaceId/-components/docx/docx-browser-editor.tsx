@@ -9,6 +9,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -23,10 +24,16 @@ import {
   PenLineIcon,
   RefreshCwIcon,
 } from "lucide-react";
+import type { EditorView } from "prosemirror-view";
 import { useTranslations } from "use-intl";
 
-import { FormattingBar } from "@stll/folio";
-import type { DocxCompatibility, DocxEditorRef, EditorMode } from "@stll/folio";
+import { FormattingBar, setAnonymizationTermsMeta } from "@stll/folio";
+import type {
+  AnonymizationTerm,
+  DocxCompatibility,
+  DocxEditorRef,
+  EditorMode,
+} from "@stll/folio";
 import { Button } from "@stll/ui/components/button";
 import {
   Select as StSelect,
@@ -45,6 +52,7 @@ import { FileViewerWithAI } from "@/components/ai-suggestions/file-viewer-with-a
 import { QuerySuspenseBoundary } from "@/components/query-suspense-boundary";
 import { StatusMessage } from "@/components/route-components";
 import Tooltip from "@/components/tooltip";
+import { anonymizeChatTextInWorker } from "@/lib/anonymize/anonymize-chat-worker-client";
 import { chatThreadIdFromFileFieldId } from "@/lib/chat-thread-ref";
 import { DocxLoadingShell } from "@/routes/_protected.workspaces/$workspaceId/-components/docx/docx-loading-shell";
 import {
@@ -53,6 +61,12 @@ import {
 } from "@/routes/_protected.workspaces/$workspaceId/-components/docx/docx-preview-zoom";
 import { useDocxBlockScroll } from "@/routes/_protected.workspaces/$workspaceId/-components/docx/use-docx-block-scroll";
 import { fileOptions } from "@/routes/_protected.workspaces/$workspaceId/-components/files/queries";
+import { useIsAnonymizationActive } from "@/routes/_protected.workspaces/$workspaceId/-components/inspector/anonymization-active-store";
+import { useAnonymizationMatchesStore } from "@/routes/_protected.workspaces/$workspaceId/-components/inspector/anonymization-matches-store";
+import { useAnonymizationSelectionStore } from "@/routes/_protected.workspaces/$workspaceId/-components/inspector/anonymization-selection-store";
+import { useDocumentTextSelectionStore } from "@/routes/_protected.workspaces/$workspaceId/-components/inspector/document-text-selection-store";
+import { anonymizationAllowlistOptions } from "@/routes/_protected.workspaces/$workspaceId/-queries/anonymization-allowlist";
+import { anonymizationTermsOptions } from "@/routes/_protected.workspaces/$workspaceId/-queries/anonymization-terms";
 import "@/routes/_protected.workspaces/$workspaceId/-components/peek/peek-docx.css";
 
 import {
@@ -163,6 +177,334 @@ const DocxBrowserEditorContent = (props: DocxBrowserEditorProps) => {
   } = props;
   const editorRef = useRef<DocxEditorRef>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Track the live ProseMirror view so we can dispatch the
+  // workspace anonymization-term list into the decoration plugin
+  // installed inside Folio. The view is captured via the
+  // onEditorViewReady callback below; the effect re-pushes the
+  // term list whenever it (or the view) changes.
+  const [editorViewForAnonymization, setEditorViewForAnonymization] =
+    useState<EditorView | null>(null);
+  // True while the inspector's Anonymization facet is mounted.
+  // We gate both the term feed *and* the detection heartbeat on
+  // this so highlights paint only while the user is on that tab
+  // — switching to Metadata / History / Suggestions clears the
+  // overlay immediately and stops the wasm pipeline from running
+  // in the background.
+  const isAnonymizationActive = useIsAnonymizationActive();
+  const anonymizationTermsQuery = useQuery(
+    anonymizationTermsOptions(workspaceId),
+  );
+  const workspaceAnonymizationTerms = useMemo<AnonymizationTerm[]>(
+    () =>
+      anonymizationTermsQuery.data?.entries.map((entry) => ({
+        canonical: entry.canonical,
+        label: entry.label,
+        variants: entry.variants,
+      })) ?? [],
+    [anonymizationTermsQuery.data],
+  );
+  // Detected-entity highlights — runs the wasm anonymization
+  // pipeline against the live doc text and exposes each detected
+  // entity as a Folio decoration term. Combined with workspace
+  // vocabulary so the editor shows everything that *would* be
+  // anonymized right now, not only the curated catalogue.
+  //
+  // Re-runs when the doc text changes (debounced inside the
+  // effect) so edits and reloads pick up new entities without
+  // re-running on every keystroke.
+  const [detectedAnonymizationTerms, setDetectedAnonymizationTerms] = useState<
+    AnonymizationTerm[]
+  >([]);
+  // Exposed by the detection heartbeat effect below so the
+  // exclusions-watching effect can kick a fresh run the moment
+  // the allowlist changes, instead of waiting for the next 2s
+  // heartbeat tick.
+  const runDetectionRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const view = editorViewForAnonymization;
+    if (!view || !isAnonymizationActive) {
+      // Facet not on screen: skip the wasm pipeline entirely and
+      // drop any previously detected terms so a re-mount starts
+      // from a clean slate.
+      setDetectedAnonymizationTerms([]);
+      return undefined;
+    }
+    let cancelled = false;
+    // Mark the pipeline as in-flight from mount so the
+    // inspector facet shows "Detecting entities…" right
+    // away instead of flashing "0 entities" during the
+    // 300ms gap before the first `run()` fires (and
+    // before that run can call `markPipelineStarted`
+    // itself). The first `run()` also calls it again
+    // (idempotent set-add); subsequent runs flip it on
+    // around each worker call.
+    useAnonymizationMatchesStore.getState().markPipelineStarted(fieldId);
+    // Track the text+exclusions we received *results* for (not
+    // just dispatched). The worker can occasionally drop a
+    // request across dev HMR (the singleton's pending map loses
+    // entries when the client module re-evaluates); the next tick
+    // simply re-dispatches until results actually land.
+    //
+    // Exclusions are part of the cache key: when the user marks
+    // a detected entity as a false positive, the doc text is
+    // unchanged but the worker needs to rerun with the new
+    // allowlist so the now-excluded canonical disappears from
+    // detected terms without waiting for the user to edit.
+    let lastDeliveredKey: string | null = null;
+    // Suppress overlapping calls for a short window so we don't
+    // queue up dozens of requests for a stable doc; if the call
+    // never delivers, the window expires and a retry fires.
+    let inFlightUntil = 0;
+    const IN_FLIGHT_TIMEOUT_MS = 10_000;
+    const markRan = () =>
+      useAnonymizationMatchesStore.getState().markPipelineRan(fieldId);
+    const run = () => {
+      if (cancelled) {
+        return;
+      }
+      if (Date.now() < inFlightUntil) {
+        return;
+      }
+      const text = view.state.doc.textContent;
+      const excluded = excludedCanonicalsRef.current;
+      const cacheKey = `${[...excluded].sort().join("|")}~${text}`;
+      if (text.length === 0) {
+        // Empty doc: nothing to detect. Release the
+        // "in flight" lock so the facet exits the
+        // "Detecting…" placeholder instead of stalling
+        // on the mount-time mark.
+        markRan();
+        return;
+      }
+      if (cacheKey === lastDeliveredKey) {
+        // Already delivered for this exact text +
+        // exclusions; no-op without flipping the
+        // started state (we're not running anything).
+        return;
+      }
+      inFlightUntil = Date.now() + IN_FLIGHT_TIMEOUT_MS;
+      // (Re-)mark started: handles reruns triggered by
+      // edits or allowlist changes after the first run
+      // already called `markPipelineRan`.
+      useAnonymizationMatchesStore.getState().markPipelineStarted(fieldId);
+      anonymizeChatTextInWorker({
+        text,
+        workspaceId,
+        excludedCanonicals: excluded,
+      })
+        .then((result) => {
+          inFlightUntil = 0;
+          if (cancelled) {
+            return;
+          }
+          lastDeliveredKey = cacheKey;
+          const byCanonical = new Map<string, AnonymizationTerm>();
+          for (const pair of result.pairs) {
+            const key = `${pair.label} ${pair.original.toLowerCase()}`;
+            if (!byCanonical.has(key)) {
+              byCanonical.set(key, {
+                canonical: pair.original,
+                label: pair.label,
+              });
+            }
+          }
+          setDetectedAnonymizationTerms([...byCanonical.values()]);
+          markRan();
+        })
+        .catch(() => {
+          inFlightUntil = 0;
+          // Mark on failure too — without this, a worker
+          // error would leave the facet stuck on
+          // "Detecting…" forever.
+          markRan();
+        });
+    };
+    // The doc text isn't always populated when the view first
+    // captures (lazy DOCX load, async paged rendering). Slow
+    // heartbeat catches it shortly after, and also picks up
+    // edits without per-keystroke pipeline runs. The same-text
+    // guard above no-ops re-runs once the doc is steady.
+    const initialTimer = setTimeout(run, 300);
+    const heartbeat = setInterval(run, 2000);
+    // Expose `run` so an outside effect can kick a fresh
+    // detection right after the user toggles an exclusion,
+    // without waiting up to a heartbeat tick for the new
+    // allowlist to take effect.
+    runDetectionRef.current = run;
+    return () => {
+      cancelled = true;
+      runDetectionRef.current = null;
+      clearTimeout(initialTimer);
+      clearInterval(heartbeat);
+      // Release the in-flight lock on unmount/dep change
+      // so a stale "Detecting…" doesn't survive a tab
+      // switch or an anonymization toggle-off.
+      markRan();
+    };
+  }, [editorViewForAnonymization, isAnonymizationActive, workspaceId, fieldId]);
+  // Per-doc allowlist: canonicals the user has flagged as false
+  // positives. The chat-anon worker filters these out of its
+  // detected entities itself; we still need to strip them from
+  // the workspace catalog list, because catalog terms are sent
+  // straight to Folio without going through the worker.
+  const allowlistQuery = useQuery({
+    ...anonymizationAllowlistOptions({ workspaceId, entityId }),
+    enabled: isAnonymizationActive,
+  });
+  const excludedCanonicalsSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const entry of allowlistQuery.data?.entries ?? []) {
+      set.add(entry.canonical.toLocaleLowerCase());
+    }
+    return set;
+  }, [allowlistQuery.data]);
+  // Hold the latest list in a ref so the chat-anon polling effect
+  // sees fresh exclusions without re-installing its heartbeat on
+  // every keystroke / mutation.
+  const excludedCanonicalsRef = useRef<readonly string[]>([]);
+  useEffect(() => {
+    excludedCanonicalsRef.current = [...excludedCanonicalsSet];
+    // Kick the detection right away so worker-found terms that
+    // the user just added to the allowlist disappear without
+    // having to wait up to 2s for the next heartbeat tick.
+    runDetectionRef.current?.();
+  }, [excludedCanonicalsSet]);
+  const mergedAnonymizationTerms = useMemo<AnonymizationTerm[]>(() => {
+    if (!isAnonymizationActive) {
+      return [];
+    }
+    const filteredWorkspace =
+      excludedCanonicalsSet.size === 0
+        ? workspaceAnonymizationTerms
+        : workspaceAnonymizationTerms.filter(
+            (term) =>
+              !excludedCanonicalsSet.has(term.canonical.toLocaleLowerCase()),
+          );
+    return [...filteredWorkspace, ...detectedAnonymizationTerms];
+  }, [
+    isAnonymizationActive,
+    workspaceAnonymizationTerms,
+    detectedAnonymizationTerms,
+    excludedCanonicalsSet,
+  ]);
+  // Dispatch the live term list into the plugin. We can't simply
+  // read matches right after `dispatch` because DOCX content
+  // loads asynchronously: the first dispatch hits an empty doc
+  // (matches=[]), then PM's docChanged transaction rebuilds
+  // matches *later* without our effect re-firing. Publishing is
+  // handled by the polling effect below.
+  useEffect(() => {
+    const view = editorViewForAnonymization;
+    if (!view) {
+      return;
+    }
+    try {
+      const { key, payload } = setAnonymizationTermsMeta(
+        mergedAnonymizationTerms,
+      );
+      view.dispatch(view.state.tr.setMeta(key, payload));
+    } catch {
+      // wait for the next onEditorViewReady capture to retry.
+    }
+  }, [editorViewForAnonymization, mergedAnonymizationTerms]);
+  // Publish the plugin's live match list to the inspector facet
+  // so it can show counts and filter the workspace vocabulary
+  // list. Polls once a second — cheap, and necessary because the
+  // plugin rebuilds matches on async doc loads / edits that our
+  // React effect deps cannot observe directly. Skipped state
+  // updates are no-ops (zustand suppresses sets that yield
+  // identical references); the entry is cleared on unmount.
+  // Wired from the plugin via Folio's
+  // `onAnonymizationMatchesChange` prop below. The plugin emits
+  // the current match list on every transition (init, term push,
+  // doc edit, async DOCX load); we mirror it into the matches
+  // store so the inspector facet's counter and "matching
+  // workspace terms" list stay in sync.
+  const handleAnonymizationMatchesChange = useCallback(
+    (matches: readonly { canonical: string; label: string }[]) => {
+      const { publish } = useAnonymizationMatchesStore.getState();
+      if (!isAnonymizationActive) {
+        return;
+      }
+      const countByCanonical = new Map<string, number>();
+      const labelByCanonical = new Map<string, string>();
+      for (const match of matches) {
+        countByCanonical.set(
+          match.canonical,
+          (countByCanonical.get(match.canonical) ?? 0) + 1,
+        );
+        if (!labelByCanonical.has(match.canonical)) {
+          labelByCanonical.set(match.canonical, match.label);
+        }
+      }
+      publish(fieldId, {
+        totalMatches: matches.length,
+        countByCanonical,
+        labelByCanonical,
+      });
+    },
+    [fieldId, isAnonymizationActive],
+  );
+  useEffect(() => {
+    const { clear } = useAnonymizationMatchesStore.getState();
+    if (!isAnonymizationActive) {
+      clear(fieldId);
+    }
+    return () => {
+      clear(fieldId);
+    };
+  }, [fieldId, isAnonymizationActive]);
+
+  // Bridge document selections → inspector "Term to anonymize"
+  // input. Folio fires `onSelectionTextChange` with the range
+  // and the resolved text on every selection-bearing
+  // transaction, so we just have to length-gate and publish.
+  // The cleanup clears the store so a second tab opening this
+  // facet doesn't see a stale prefill from the previous file.
+  const handleSelectionTextChange = useCallback(
+    (selection: { from: number; to: number; text: string }) => {
+      if (selection.from === selection.to) {
+        return;
+      }
+      const single = selection.text.replace(/\s+/g, " ").trim();
+      if (single.length < 2 || single.length > 200) {
+        return;
+      }
+      useDocumentTextSelectionStore.getState().publish(fieldId, single);
+    },
+    [fieldId],
+  );
+  useEffect(
+    () => () => {
+      useDocumentTextSelectionStore.getState().clear(fieldId);
+    },
+    [fieldId],
+  );
+
+  // Two-way bridge with the inspector anonymization facet.
+  // - Click in document → push to store as source="doc" with
+  //   this editor's fieldId so only this document's facet
+  //   reacts.
+  // - Selection from sidebar (source="sidebar") → forward
+  //   canonical + seq to Folio only when the bridged fieldId
+  //   matches. Background editor panes (cached inactive tabs)
+  //   stay quiet.
+  // - Doc-sourced selections aren't echoed back to the editor —
+  //   that would re-scroll on its own click.
+  const handleAnonymizationTermClick = useCallback(
+    (canonical: string, label: string) => {
+      useAnonymizationSelectionStore
+        .getState()
+        .select(canonical, label, "doc", fieldId);
+    },
+    [fieldId],
+  );
+  const sidebarSelectedCanonical = useAnonymizationSelectionStore((s) =>
+    s.source === "sidebar" && s.fieldId === fieldId ? s.canonical : null,
+  );
+  const sidebarSelectionSeq = useAnonymizationSelectionStore((s) =>
+    s.source === "sidebar" && s.fieldId === fieldId ? s.seq : 0,
+  );
   const didOpenRef = useRef(false);
   const errorToastShownRef = useRef(false);
   const lastStyleLabelRef = useRef("Normal");
@@ -799,40 +1141,44 @@ const DocxBrowserEditorContent = (props: DocxBrowserEditorProps) => {
     ? t("folio.finishEditing")
     : t("folio.editFile");
 
-  const toolbarExtra =
-    showActionBar || actionBarControls !== undefined ? (
-      <>
-        {actionBarControls}
-        {showActionBar && (
-          <>
-            <Tooltip
-              content={lockActionLabel}
-              render={
-                <Button
-                  aria-label={lockActionLabel}
-                  className={cn(
-                    "transition-all",
-                    showLockLabel ? "px-2" : "",
-                    isPromptingUnlock &&
-                      "bg-primary/10 text-primary ring-primary/60 animate-pulse ring-2",
-                  )}
-                  disabled={
-                    state.status === "opening" || state.status === "saving"
-                  }
-                  onClick={handleToggleLock}
-                  size={showLockLabel ? "sm" : "icon-sm"}
-                  variant="ghost"
-                >
-                  {isUnlocked ? <LockOpenIcon /> : <LockIcon />}
-                  {showLockLabel && <span>{lockActionLabel}</span>}
-                </Button>
-              }
-            />
-            {isUnlocked && <AutosaveIndicator status={autosaveStatus} />}
-          </>
-        )}
-      </>
-    ) : undefined;
+  const toolbarExtra = (() => {
+    if (showActionBar || actionBarControls !== undefined) {
+      return (
+        <>
+          {actionBarControls}
+          {showActionBar && (
+            <>
+              <Tooltip
+                content={lockActionLabel}
+                render={
+                  <Button
+                    aria-label={lockActionLabel}
+                    className={cn(
+                      "transition-all",
+                      showLockLabel ? "px-2" : "",
+                      isPromptingUnlock &&
+                        "bg-primary/10 text-primary ring-primary/60 animate-pulse ring-2",
+                    )}
+                    disabled={
+                      state.status === "opening" || state.status === "saving"
+                    }
+                    onClick={handleToggleLock}
+                    size={showLockLabel ? "sm" : "icon-sm"}
+                    variant="ghost"
+                  >
+                    {isUnlocked ? <LockOpenIcon /> : <LockIcon />}
+                    {showLockLabel && <span>{lockActionLabel}</span>}
+                  </Button>
+                }
+              />
+              {isUnlocked && <AutosaveIndicator status={autosaveStatus} />}
+            </>
+          )}
+        </>
+      );
+    }
+    return undefined;
+  })();
 
   useEffect(() => {
     if (!isUnlocked) {
@@ -844,25 +1190,29 @@ const DocxBrowserEditorContent = (props: DocxBrowserEditorProps) => {
     const styleLabelElement = containerRef.current?.querySelector<HTMLElement>(
       '[data-folio-style-picker] [data-slot="select-value"]',
     );
-    const stylePreviewElement =
-      styleLabelElement?.querySelector<HTMLElement>("[style]") ??
-      styleLabelElement;
-    const styleLabel = styleLabelElement?.textContent?.trim();
+    if (!styleLabelElement) {
+      return;
+    }
 
-    if (styleLabel !== undefined && styleLabel.length > 0) {
+    const stylePreviewElement =
+      styleLabelElement.querySelector<HTMLElement>("[style]") ??
+      styleLabelElement;
+    const styleLabelText = Reflect.get(styleLabelElement, "textContent");
+    const styleLabel =
+      typeof styleLabelText === "string" ? styleLabelText.trim() : "";
+
+    if (styleLabel.length > 0) {
       lastStyleLabelRef.current = styleLabel;
     }
 
-    if (stylePreviewElement !== undefined && stylePreviewElement !== null) {
-      const computedStyle = window.getComputedStyle(stylePreviewElement);
-      lastStyleLabelStyleRef.current = {
-        color: computedStyle.color,
-        fontSize: computedStyle.fontSize,
-        fontStyle: computedStyle.fontStyle,
-        fontWeight: computedStyle.fontWeight,
-        lineHeight: computedStyle.lineHeight,
-      };
-    }
+    const computedStyle = window.getComputedStyle(stylePreviewElement);
+    lastStyleLabelStyleRef.current = {
+      color: computedStyle.color,
+      fontSize: computedStyle.fontSize,
+      fontStyle: computedStyle.fontStyle,
+      fontWeight: computedStyle.fontWeight,
+      lineHeight: computedStyle.lineHeight,
+    };
   });
 
   if (
@@ -953,6 +1303,12 @@ const DocxBrowserEditorContent = (props: DocxBrowserEditorProps) => {
                 setCompatibility(nextCompatibility);
                 onCompatibilityChange?.(nextCompatibility);
               }}
+              onAnonymizationMatchesChange={handleAnonymizationMatchesChange}
+              onSelectionTextChange={handleSelectionTextChange}
+              onAnonymizationTermClick={handleAnonymizationTermClick}
+              selectedAnonymizationCanonical={sidebarSelectedCanonical}
+              anonymizationSelectionSeq={sidebarSelectionSeq}
+              onEditorViewReady={setEditorViewForAnonymization}
               showToolbar={showActionBar ? true : isUnlocked}
               toolbarExtra={toolbarExtra}
               {...(isUnlocked ? { onChange: handleChange } : {})}
@@ -993,13 +1349,15 @@ const AutosaveIndicator = ({ status }: { status: AutosaveStatus }) => {
       role="status"
       title={isSynced ? t("folio.synced") : t("folio.syncing")}
     >
-      {isSynced ? (
-        <CheckCircle2Icon className="size-3.5" />
-      ) : isSyncing ? (
-        <RefreshCwIcon className="size-3.5 animate-spin" />
-      ) : (
-        <RefreshCwIcon className="size-3.5 opacity-45" />
-      )}
+      {(() => {
+        if (isSynced) {
+          return <CheckCircle2Icon className="size-3.5" />;
+        }
+        if (isSyncing) {
+          return <RefreshCwIcon className="size-3.5 animate-spin" />;
+        }
+        return <RefreshCwIcon className="size-3.5 opacity-45" />;
+      })()}
     </span>
   );
 };
@@ -1143,10 +1501,18 @@ const DocxLoadingPriorityExtra = () => {
           <StSelectValue />
         </StSelectTrigger>
         <StSelectPopup>
-          <StSelectItem value="all-markup">All Markup</StSelectItem>
-          <StSelectItem value="simple-markup">Simple</StSelectItem>
-          <StSelectItem value="no-markup">No Markup</StSelectItem>
-          <StSelectItem value="original">Original</StSelectItem>
+          <StSelectItem value="all-markup">
+            {t("markupView.allMarkup")}
+          </StSelectItem>
+          <StSelectItem value="simple-markup">
+            {t("markupView.simple")}
+          </StSelectItem>
+          <StSelectItem value="no-markup">
+            {t("markupView.noMarkup")}
+          </StSelectItem>
+          <StSelectItem value="original">
+            {t("markupView.original")}
+          </StSelectItem>
         </StSelectPopup>
       </StSelect>
     </div>

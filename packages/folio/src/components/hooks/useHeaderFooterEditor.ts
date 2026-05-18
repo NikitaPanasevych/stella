@@ -131,8 +131,8 @@ export const useHeaderFooterEditor = ({
     }
 
     const pkg = history.state.package;
-    const finalProps = pkg.document?.finalSectionProperties;
-    const sections = pkg.document?.sections;
+    const finalProps = pkg.document.finalSectionProperties;
+    const sections = pkg.document.sections;
     const headers = pkg.headers;
     const footers = pkg.footers;
 
@@ -345,13 +345,13 @@ export const useHeaderFooterEditor = ({
   const handleHeaderFooterDoubleClick = useCallback(
     (position: "header" | "footer", pageNumber?: number) => {
       const isFirstPage = hasTitlePg && (pageNumber ?? 1) === 1;
-      const hf = isFirstPage
-        ? position === "header"
-          ? firstPageHeaderContent
-          : firstPageFooterContent
-        : position === "header"
-          ? headerContent
-          : footerContent;
+      let hf = position === "header" ? headerContent : footerContent;
+      if (isFirstPage) {
+        hf =
+          position === "header"
+            ? firstPageHeaderContent
+            : firstPageFooterContent;
+      }
       setHfEditIsFirstPage(isFirstPage);
       if (hf) {
         setHfEditPosition(position);
@@ -363,7 +363,7 @@ export const useHeaderFooterEditor = ({
         return;
       }
       const pkg = history.state.package;
-      const sectionProps = pkg.document?.finalSectionProperties;
+      const sectionProps = pkg.document.finalSectionProperties;
       if (!sectionProps) {
         return;
       }
@@ -393,15 +393,13 @@ export const useHeaderFooterEditor = ({
         package: {
           ...pkg,
           [mapKey]: newMap,
-          document: pkg.document
-            ? {
-                ...pkg.document,
-                finalSectionProperties: {
-                  ...sectionProps,
-                  [refKey]: [...existingRefs, newRef],
-                },
-              }
-            : pkg.document,
+          document: {
+            ...pkg.document,
+            finalSectionProperties: {
+              ...sectionProps,
+              [refKey]: [...existingRefs, newRef],
+            },
+          },
         },
       };
       pushDocument(newDoc);
@@ -434,13 +432,14 @@ export const useHeaderFooterEditor = ({
       // title-page section has the body H/F; signature sections
       // override default with stripped-down rIds). Codex PR #258
       // review.
-      const activeRId = hfEditIsFirstPage
-        ? hfEditPosition === "header"
-          ? activeFirstHeaderRId
-          : activeFirstFooterRId
-        : hfEditPosition === "header"
-          ? activeHeaderRId
-          : activeFooterRId;
+      let activeRId =
+        hfEditPosition === "header" ? activeHeaderRId : activeFooterRId;
+      if (hfEditIsFirstPage) {
+        activeRId =
+          hfEditPosition === "header"
+            ? activeFirstHeaderRId
+            : activeFirstFooterRId;
+      }
       const refType = hfEditIsFirstPage ? "first" : "default";
       const mapKey = hfEditPosition === "header" ? "headers" : "footers";
       const map = pkg[mapKey];
@@ -509,13 +508,14 @@ export const useHeaderFooterEditor = ({
     // rendered, not whatever lives in `finalSectionProperties` (Codex
     // PR #258 review). Drop the ref from every section that points at
     // this rId so we don't leave a dangling reference behind.
-    const activeRId = hfEditIsFirstPage
-      ? hfEditPosition === "header"
-        ? activeFirstHeaderRId
-        : activeFirstFooterRId
-      : hfEditPosition === "header"
-        ? activeHeaderRId
-        : activeFooterRId;
+    let activeRId =
+      hfEditPosition === "header" ? activeHeaderRId : activeFooterRId;
+    if (hfEditIsFirstPage) {
+      activeRId =
+        hfEditPosition === "header"
+          ? activeFirstHeaderRId
+          : activeFirstFooterRId;
+    }
 
     if (activeRId) {
       const newMap = new Map(pkg[mapKey]);
@@ -533,28 +533,26 @@ export const useHeaderFooterEditor = ({
       };
 
       const oldDoc = pkg.document;
-      const newSections = oldDoc?.sections?.map((s) => ({
+      const newSections = oldDoc.sections?.map((s) => ({
         ...s,
         properties: stripRef(s.properties),
       }));
-      const newFinalProps = oldDoc?.finalSectionProperties
+      const newFinalProps = oldDoc.finalSectionProperties
         ? stripRef(oldDoc.finalSectionProperties)
-        : oldDoc?.finalSectionProperties;
+        : oldDoc.finalSectionProperties;
 
       const newDoc: Document = {
         ...history.state,
         package: {
           ...pkg,
           [mapKey]: newMap,
-          document: oldDoc
-            ? {
-                ...oldDoc,
-                ...(newSections !== undefined ? { sections: newSections } : {}),
-                ...(newFinalProps !== undefined
-                  ? { finalSectionProperties: newFinalProps }
-                  : {}),
-              }
-            : oldDoc,
+          document: {
+            ...oldDoc,
+            ...(newSections !== undefined ? { sections: newSections } : {}),
+            ...(newFinalProps !== undefined
+              ? { finalSectionProperties: newFinalProps }
+              : {}),
+          },
         },
       };
       pushDocument(newDoc);

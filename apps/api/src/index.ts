@@ -31,6 +31,7 @@ import { propertiesRoute } from "@/api/handlers/properties/routes";
 import { ratesRoute } from "@/api/handlers/rates/routes";
 import { searchRoute } from "@/api/handlers/search/routes";
 import { shortcutsRoute } from "@/api/handlers/shortcuts/routes";
+import { skillsRoute } from "@/api/handlers/skills/routes";
 import { myTasksRoute } from "@/api/handlers/tasks/my-tasks-route";
 import { tasksRoute } from "@/api/handlers/tasks/routes";
 import {
@@ -70,6 +71,12 @@ const SESSION_ID_HEADER = "x-posthog-session-id";
 const SESSION_ID_MAX_LENGTH = 64;
 const SESSION_ID_PATTERN = /^[\w-]+$/;
 const S3_REFRESH_CHECK_INTERVAL_MS = 60_000;
+
+const STATUS_BY_ELYSIA_CODE: Partial<Record<string, number>> = {
+  VALIDATION: 422,
+  NOT_FOUND: 404,
+  PARSE: 400,
+};
 
 const getApiPort = () => {
   const rawPort = process.env["STELLA_API_PORT"];
@@ -190,14 +197,7 @@ const api = new Elysia()
 
     const path = getRequestPath(request);
     const reqCtx = getRequestContext(request);
-    const statusCode =
-      code === "VALIDATION"
-        ? 422
-        : code === "NOT_FOUND"
-          ? 404
-          : code === "PARSE"
-            ? 400
-            : 500;
+    const statusCode = STATUS_BY_ELYSIA_CODE[code] ?? 500;
 
     if (shouldLogRequest(path)) {
       const attributes = buildRequestLogAttributes({
@@ -325,6 +325,7 @@ const api = new Elysia()
       .use(caseLawRoute)
       .use(chatRoute)
       .use(userFilesRoute)
+      .use(skillsRoute)
       .use(shortcutsRoute)
       .use(viewsRoute)
       .use(tasksRoute)

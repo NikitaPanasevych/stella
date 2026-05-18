@@ -173,6 +173,7 @@ function convertParagraph(
   const emitTrackedChange = (
     change: Insertion | Deletion | MoveFrom | MoveTo,
     markType: "insertion" | "deletion",
+    moveKind: "moveFrom" | "moveTo" | null,
   ): void => {
     emitInlineNodes(
       convertTrackedChange(
@@ -180,6 +181,7 @@ function convertParagraph(
         markType,
         getInheritedRunFormatting,
         styleResolver,
+        moveKind,
       ),
     );
   };
@@ -213,9 +215,17 @@ function convertParagraph(
         convertInlineSdt(content, getInheritedRunFormatting, styleResolver),
       );
     } else if (content.type === "insertion" || content.type === "moveTo") {
-      emitTrackedChange(content, "insertion");
+      emitTrackedChange(
+        content,
+        "insertion",
+        content.type === "moveTo" ? "moveTo" : null,
+      );
     } else if (content.type === "deletion" || content.type === "moveFrom") {
-      emitTrackedChange(content, "deletion");
+      emitTrackedChange(
+        content,
+        "deletion",
+        content.type === "moveFrom" ? "moveFrom" : null,
+      );
     } else if (content.type === "mathEquation") {
       emitInlineNode(convertMathEquation(content));
     }
@@ -282,6 +292,7 @@ function convertTrackedChange(
   markType: "insertion" | "deletion",
   getInheritedRunFormatting: RunFormattingResolver,
   styleResolver?: StyleResolver | null,
+  moveKind: "moveFrom" | "moveTo" | null = null,
 ): PMNode[] {
   const nodes: PMNode[] = [];
   for (const item of change.content) {
@@ -293,7 +304,7 @@ function convertTrackedChange(
           styleResolver,
         ),
       );
-    } else if (item.type === "hyperlink") {
+    } else {
       nodes.push(
         ...convertHyperlink(item, getInheritedRunFormatting, styleResolver),
       );
@@ -305,6 +316,7 @@ function convertTrackedChange(
     revisionId: change.info.id,
     author: change.info.author,
     date: change.info.date ?? null,
+    moveKind,
   });
 
   return nodes.map((node) => {
@@ -377,6 +389,15 @@ function paragraphFormattingToAttrs(
   // Store original inline formatting for lossless serialization round-trip
   if (formatting) {
     attrs._originalFormatting = formatting;
+  }
+  // Carry `w:pPrChange` (paragraph-property-change tracking) opaquely
+  // through ProseMirror. Without this, every edit strips the entries
+  // off the paragraph because nothing in PM's schema represents them.
+  // Shallow-clone the array so the editor state owns its own
+  // reference — mutating the Folio document later must not poke
+  // through into PM attrs.
+  if (paragraph.propertyChanges && paragraph.propertyChanges.length > 0) {
+    attrs._propertyChanges = [...paragraph.propertyChanges];
   }
 
   // Helper: assign a value only when defined
@@ -639,7 +660,8 @@ function hasDirectRunFormatting(
     return false;
   }
 
-  return Object.entries(formatting).some(
+  const entries: [string, unknown][] = Object.entries(formatting);
+  return entries.some(
     ([key, value]) => key !== "styleId" && value !== undefined,
   );
 }
@@ -898,12 +920,17 @@ function convertTable(
     const isFirstRowStyled = rowIndex === 0 && !!look?.firstRow;
     const isLastRow = rowIndex === totalRows - 1 && !!look?.lastRow;
 
-    const rowBandStyle =
-      bandingEnabledH && !isFirstRowStyled && !isLastRow
-        ? dataRowIndex % 2 === 0
-          ? conditionalStyles.band1Horz
-          : conditionalStyles.band2Horz
-        : undefined;
+    const rowBandStyle = (() => {
+      if (bandingEnabledH && !isFirstRowStyled && !isLastRow) {
+        return (() => {
+          if (dataRowIndex % 2 === 0) {
+            return conditionalStyles.band1Horz;
+          }
+          return conditionalStyles.band2Horz;
+        })();
+      }
+      return undefined;
+    })();
     if (bandingEnabledH && !isFirstRowStyled && !isLastRow) {
       dataRowIndex++;
     }
@@ -1267,14 +1294,17 @@ function convertTableCell(
 
   // Convert borders — preserve full BorderSpec per side
   // Priority: cell borders > conditional style borders > table borders
-  const baseBorders = tableBorders
-    ? {
+  const baseBorders = (() => {
+    if (tableBorders) {
+      return {
         top: isFirstRow ? tableBorders.top : tableBorders.insideH,
         bottom: isLastRow ? tableBorders.bottom : tableBorders.insideH,
         left: isFirstCol ? tableBorders.left : tableBorders.insideV,
         right: isLastCol ? tableBorders.right : tableBorders.insideV,
-      }
-    : undefined;
+      };
+    }
+    return undefined;
+  })();
 
   const conditionalBorders = conditionalStyle?.tcPr?.borders;
   const cellBorders = formatting?.borders;
@@ -1362,7 +1392,7 @@ function convertTableCell(
           conditionalStyle?.rPr,
         ),
       );
-    } else if (content.type === "table") {
+    } else {
       // Nested tables - recursively convert
       contentNodes.push(convertTable(content, styleResolver, theme));
     }
@@ -1392,18 +1422,16 @@ function convertField(
   let displayText = "";
   let fieldFormatting: TextFormatting | undefined;
   const runs = field.type === "simpleField" ? field.content : field.fieldResult;
-  if (runs) {
-    for (const r of runs) {
-      if (r.type === "run") {
-        for (const c of r.content) {
-          if (c.type === "text") {
-            displayText += c.text;
-          }
+  for (const r of runs) {
+    if (r.type === "run") {
+      for (const c of r.content) {
+        if (c.type === "text") {
+          displayText += c.text;
         }
-        // Use formatting from the first run that has it
-        if (!fieldFormatting && r.formatting) {
-          fieldFormatting = r.formatting;
-        }
+      }
+      // Use formatting from the first run that has it
+      if (!fieldFormatting && r.formatting) {
+        fieldFormatting = r.formatting;
       }
     }
   }
@@ -1461,7 +1489,7 @@ function convertInlineSdt(
         styleResolver,
       );
       inlineNodes.push(...runNodes);
-    } else if (content.type === "hyperlink") {
+    } else {
       const linkNodes = convertHyperlink(
         content,
         getInheritedRunFormatting,
@@ -1551,10 +1579,7 @@ function convertRunContent(
       return [schema.node("tab")];
 
     case "drawing":
-      if (content.image) {
-        return [convertImage(content.image)];
-      }
-      return [];
+      return [convertImage(content.image)];
 
     case "shape": {
       // Shapes with text body are handled as text boxes at block level
@@ -1585,8 +1610,22 @@ function convertRunContent(
       return [schema.text(content.id.toString(), [...marks, endnoteMark])];
     }
 
-    default:
+    case "fieldChar":
+    case "instrText":
+      // Complex field structure markers — handled at the run/paragraph
+      // level via `convertField`, not as standalone inline content.
       return [];
+
+    case "noBreakHyphen":
+      return [schema.text("‑", marks)];
+
+    case "softHyphen":
+      return [schema.text("­", marks)];
+
+    case "symbol":
+      // Plain Unicode symbol — fall through to text if the parsed
+      // character is available; otherwise drop.
+      return content.char ? [schema.text(content.char, marks)] : [];
   }
 }
 
@@ -1607,17 +1646,23 @@ function convertRunContent(
  *    - TopAndBottom: image on its own line, text above/below only
  *    - None/Behind/InFront: positioned image, no text wrap
  */
+type PartialImagePosition = Partial<NonNullable<Image["position"]>>;
+type PartialImageSize = Partial<Image["size"]>;
+
 function convertImage(image: Image): PMNode {
   // Convert EMU to pixels for proper sizing
-  const widthPx = image.size?.width ? emuToPixels(image.size.width) : undefined;
-  const heightPx = image.size?.height
-    ? emuToPixels(image.size.height)
+  const imageData: { size?: PartialImageSize } = image;
+  const imageSize = imageData.size;
+  const widthPx = imageSize?.width ? emuToPixels(imageSize.width) : undefined;
+  const heightPx = imageSize?.height
+    ? emuToPixels(imageSize.height)
     : undefined;
 
   // Determine wrap type and float direction
   const wrapType = image.wrap.type;
   const wrapText = image.wrap.wrapText;
-  const hAlign = image.position?.horizontal?.alignment;
+  const imagePosition: PartialImagePosition | undefined = image.position;
+  const hAlign = imagePosition?.horizontal?.alignment;
 
   // Determine CSS float based on wrap settings
   // In DOCX: wrapText='left' means "text flows on the left" → image is on right → float: right
@@ -1670,7 +1715,7 @@ function convertImage(image: Image): PMNode {
     displayMode = "block";
   } else if (wrapType === "behind" || wrapType === "inFront") {
     displayMode = "float";
-  } else if (cssFloat && cssFloat !== "none") {
+  } else if (cssFloat !== "none") {
     displayMode = "float";
   } else {
     displayMode = "block";
@@ -1715,29 +1760,30 @@ function convertImage(image: Image): PMNode {
         vertical?: { relativeTo?: string; posOffset?: number; align?: string };
       }
     | undefined;
-  if (image.position) {
+  if (imagePosition) {
     position = {};
-    if (image.position.horizontal) {
+    if (imagePosition.horizontal) {
       const h: { relativeTo?: string; posOffset?: number; align?: string } = {
-        relativeTo: image.position.horizontal.relativeTo,
+        relativeTo: imagePosition.horizontal.relativeTo,
       };
-      if (image.position.horizontal.posOffset !== undefined) {
-        h.posOffset = image.position.horizontal.posOffset;
+      if (imagePosition.horizontal.posOffset !== undefined) {
+        h.posOffset = imagePosition.horizontal.posOffset;
       }
-      if (image.position.horizontal.alignment) {
-        h.align = image.position.horizontal.alignment;
+      if (imagePosition.horizontal.alignment) {
+        h.align = imagePosition.horizontal.alignment;
       }
       position.horizontal = h;
     }
-    if (image.position.vertical) {
+
+    if (imagePosition.vertical) {
       const v: { relativeTo?: string; posOffset?: number; align?: string } = {
-        relativeTo: image.position.vertical.relativeTo,
+        relativeTo: imagePosition.vertical.relativeTo,
       };
-      if (image.position.vertical.posOffset !== undefined) {
-        v.posOffset = image.position.vertical.posOffset;
+      if (imagePosition.vertical.posOffset !== undefined) {
+        v.posOffset = imagePosition.vertical.posOffset;
       }
-      if (image.position.vertical.alignment) {
-        v.align = image.position.vertical.alignment;
+      if (imagePosition.vertical.alignment) {
+        v.align = imagePosition.vertical.alignment;
       }
       position.vertical = v;
     }
@@ -1954,18 +2000,25 @@ function textFormattingToMarks(
   }
 
   // Character spacing (spacing, position, scale, kerning)
+  const spacing =
+    typeof formatting.spacing === "number" ? formatting.spacing : null;
+  const position =
+    typeof formatting.position === "number" ? formatting.position : null;
+  const scale = typeof formatting.scale === "number" ? formatting.scale : null;
+  const kerning =
+    typeof formatting.kerning === "number" ? formatting.kerning : null;
   if (
-    formatting.spacing !== null ||
-    formatting.position !== null ||
-    formatting.scale !== null ||
-    formatting.kerning !== null
+    spacing !== null ||
+    position !== null ||
+    scale !== null ||
+    kerning !== null
   ) {
     marks.push(
       schema.mark("characterSpacing", {
-        spacing: formatting.spacing ?? null,
-        position: formatting.position ?? null,
-        scale: formatting.scale ?? null,
-        kerning: formatting.kerning ?? null,
+        spacing,
+        position,
+        scale,
+        kerning,
       }),
     );
   }
@@ -2006,8 +2059,11 @@ function textFormattingToMarks(
  * Convert a Shape to a ProseMirror shape node (inline SVG)
  */
 function convertShape(shape: Shape): PMNode {
-  const widthPx = shape.size?.width ? emuToPixels(shape.size.width) : 100;
-  const heightPx = shape.size?.height ? emuToPixels(shape.size.height) : 80;
+  const shapeData: { size?: Partial<Shape["size"]> } = shape;
+  const shapeSize = shapeData.size;
+  const widthPx = shapeSize?.width ? emuToPixels(shapeSize.width) : 100;
+  const heightPx = shapeSize?.height ? emuToPixels(shapeSize.height) : 80;
+  const shapeAttrs: { shapeType?: Shape["shapeType"] } = shape;
 
   let fillColor: string | undefined;
   let fillType: string = "solid";
@@ -2066,7 +2122,7 @@ function convertShape(shape: Shape): PMNode {
   }
 
   return schema.node("shape", {
-    shapeType: shape.shapeType || "rect",
+    shapeType: shapeAttrs.shapeType ?? "rect",
     shapeId: shape.id,
     width: widthPx,
     height: heightPx,
@@ -2161,9 +2217,11 @@ function convertTextBox(
   textBox: TextBox,
   styleResolver: StyleResolver | null,
 ): PMNode {
-  const widthPx = textBox.size?.width ? emuToPixels(textBox.size.width) : 200;
-  const heightPx = textBox.size?.height
-    ? emuToPixels(textBox.size.height)
+  const textBoxData: { size?: Partial<TextBox["size"]> } = textBox;
+  const textBoxSize = textBoxData.size;
+  const widthPx = textBoxSize?.width ? emuToPixels(textBoxSize.width) : 200;
+  const heightPx = textBoxSize?.height
+    ? emuToPixels(textBoxSize.height)
     : undefined;
 
   // Convert fill color
@@ -2250,7 +2308,7 @@ export function headerFooterToProseDoc(
   for (const block of content) {
     if (block.type === "paragraph") {
       nodes.push(...convertParagraphWithTextBoxes(block, styleResolver));
-    } else if (block.type === "table") {
+    } else {
       nodes.push(convertTable(block, styleResolver, theme));
     }
   }

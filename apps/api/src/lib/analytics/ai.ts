@@ -440,9 +440,12 @@ export const sanitizeForAIAnalytics = (value: unknown): unknown => {
     );
   }
 
-  const serialized = JSON.stringify(value);
+  const serialized = stringifyJSONValue(value);
   return serialized ?? Object.prototype.toString.call(value);
 };
+
+const stringifyJSONValue = (value: unknown): string | undefined =>
+  JSON.stringify(value);
 
 const normalizeProvider = (provider: string): string => {
   if (provider.startsWith("google")) {
@@ -707,8 +710,8 @@ export const createAIAnalyticsCallbacks = ({
         ? { "ai.model": resolvedModelInfo.modelId }
         : {}),
       ...(cwMessage?.kind === "safe"
-        ? { "ai.error_message": cwMessage.message }
-        : { "ai.error_message_kind": "non_standard" }),
+        ? { "ai.error_code": cwMessage.message }
+        : { "ai.error_code_kind": "non_standard" }),
     });
 
     if (!debugEnabled) {

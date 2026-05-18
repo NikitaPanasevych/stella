@@ -11,7 +11,7 @@ export default defineConfig({
   extends: [core, react],
   rules: {
     // Override ultracite defaults for Stella
-    "no-console": "warn",
+    "no-console": "error",
     "no-shadow": "error",
     "require-await": "error",
     "no-useless-catch": "error",
@@ -64,7 +64,7 @@ export default defineConfig({
     "sonarjs/no-useless-increment": "error",
     "sonarjs/non-existent-operator": "error",
     "sonarjs/regex-complexity": ["error", { threshold: 30 }],
-    "sonarjs/slow-regex": "warn",
+    "sonarjs/slow-regex": "error",
     "sonarjs/stateful-regex": "error",
     "sonarjs/updated-loop-counter": "error",
 
@@ -75,8 +75,7 @@ export default defineConfig({
     "max-statements": "off",
     "prefer-destructuring": "off",
     "no-negated-condition": "off",
-    // Candidate strict rule, not enabled yet: current code has ~95 findings.
-    "no-nested-ternary": "off",
+    "no-nested-ternary": "error",
     "no-use-before-define": "off",
     "no-useless-return": "off",
     "no-warning-comments": "off",
@@ -94,7 +93,30 @@ export default defineConfig({
     "typescript/dot-notation": "error",
     "typescript/prefer-readonly": "off",
     "typescript/no-unnecessary-type-conversion": "error",
+    "typescript/no-unnecessary-condition": [
+      "error",
+      { allowConstantLoopConditions: "only-allowed-literals" },
+    ],
     "typescript/no-unnecessary-type-arguments": "error",
+
+    // Redundant with switch-exhaustiveness-check: an exhaustive switch
+    // covers every union member by construction, so a `default:` clause
+    // would be unreachable. Use exhaustive cases for internal
+    // discriminated unions; per-line disable switch-exhaustiveness for
+    // genuinely wide enums (OOXML w:numFmt etc.) where default+fallthrough
+    // is the intended behaviour.
+    "default-case": "off",
+
+    // A `default:` clause is treated as exhaustive. Switches without a
+    // default still require every union member to be cased — that's the
+    // safety net for discriminated unions (PM content kinds, action
+    // types). Switches with an explicit default opt out of the check,
+    // which is the right behaviour for catch-all parsers over wide
+    // string enums like OOXML w:numFmt.
+    "typescript/switch-exhaustiveness-check": [
+      "error",
+      { considerDefaultExhaustiveForUnions: true },
+    ],
 
     "unicorn/switch-case-braces": "off",
     "unicorn/number-literal-case": "off",
@@ -184,12 +206,28 @@ export default defineConfig({
     "./.oxlint-plugins/security-guards.ts",
     "./.oxlint-plugins/no-unbranded-ownership-id-param.ts",
     "./.oxlint-plugins/no-raw-user-id-schema.ts",
+    "./.oxlint-plugins/no-offset-pagination.ts",
     "./.oxlint-plugins/mcp-security.ts",
+    "./.oxlint-plugins/auth-lifecycle.ts",
     "./.oxlint-plugins/stella-toast.ts",
   ],
 
   overrides: [
     ...(core.overrides ?? []),
+    {
+      // Custom oxlint plugin rules traverse AST nodes that the runtime
+      // delivers as untyped (effectively `any`). Strict any-flow rules
+      // produce noise without real safety here.
+      files: [".oxlint-plugins/**/*.ts"],
+      rules: {
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-unsafe-argument": "off",
+        "typescript/strict-boolean-expressions": "off",
+      },
+    },
     {
       files: ["**/scripts/**"],
       rules: {
@@ -208,6 +246,29 @@ export default defineConfig({
         // looser legacy budget while new app/library code starts at 30.
         "sonarjs/cognitive-complexity": ["error", 80],
       },
+    },
+    {
+      // Astro's content config wires virtual loader/schema helpers that
+      // oxlint's type-aware pass sees as error-typed outside Astro's checker.
+      files: [
+        "apps/docs/src/content.config.ts",
+        "apps/landing/src/content.config.ts",
+      ],
+      rules: {
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+      },
+    },
+    {
+      // One-off DOCX fixture scripts and load-test CLIs intentionally
+      // print progress/errors to the terminal; keep product API code on
+      // structured logging.
+      files: [
+        "apps/api/src/handlers/docx/generate-spa-filled.ts",
+        "apps/api/src/handlers/docx/prepare-spa-template.ts",
+        "apps/api/src/tests/load/**/*.ts",
+      ],
+      rules: { "no-console": "off" },
     },
     {
       // Legacy DOCX/editor code has parser and layout state machines that need
@@ -406,6 +467,7 @@ export default defineConfig({
         "apps/web/src/**/_protected.tsx",
         "apps/web/src/**/kanban-column.tsx",
         "apps/web/src/**/workspace-table.tsx",
+        "apps/web/src/**/workspace-table/**/*.tsx",
         "apps/web/src/**/sidebar.tsx",
         "apps/web/src/**/template-preview.tsx",
         "apps/web/src/**/page-citation.tsx",
@@ -457,6 +519,8 @@ export default defineConfig({
     {
       files: ["apps/api/src/**/*.{ts,tsx}"],
       rules: {
+        "auth-lifecycle/after-remove-member-revokes-artifacts": "error",
+        "auth-lifecycle/no-direct-auth-artifact-delete": "error",
         "mcp-security/no-direct-oauth-client-join": "error",
         "no-raw-error-logging/no-raw-error-logging": "error",
       },
@@ -522,17 +586,15 @@ export default defineConfig({
         "typescript/no-unsafe-assignment": "off",
         "typescript/no-unsafe-member-access": "off",
         "typescript/strict-boolean-expressions": "off",
-        "typescript/no-base-to-string": "off",
+
         "typescript/prefer-nullish-coalescing": "off",
         "typescript/no-non-null-assertion": "off",
         "typescript/no-unnecessary-type-assertion": "off",
         "typescript/no-unsafe-return": "off",
-        "typescript/restrict-template-expressions": "off",
-        "typescript/switch-exhaustiveness-check": "off",
+
         "eslint/no-eq-null": "off",
         "eslint/eqeqeq": "off",
         "typescript/consistent-return": "off",
-        "unicorn/no-useless-collection-argument": "off",
       },
     },
     {
@@ -555,24 +617,17 @@ export default defineConfig({
         "typescript/no-non-null-assertion": "off",
         "typescript/no-unnecessary-type-assertion": "off",
         "typescript/prefer-nullish-coalescing": "off",
-        "typescript/switch-exhaustiveness-check": "off",
+
         "eslint/no-eq-null": "off",
         "eslint/eqeqeq": "off",
         "typescript/consistent-return": "off",
-        "typescript/no-base-to-string": "off",
-        "typescript/restrict-template-expressions": "off",
+
         "typescript/no-unsafe-return": "off",
         "typescript/no-unsafe-call": "off",
         "typescript/no-unsafe-argument": "off",
-        "typescript/consistent-type-imports": "off",
-        "typescript/prefer-regexp-exec": "off",
-        "typescript/no-redundant-type-constituents": "off",
+
         "typescript/no-deprecated": "off",
         "typescript/promise-function-async": "off",
-        "typescript/no-unnecessary-type-arguments": "off",
-        "typescript/prefer-includes": "off",
-        "typescript/no-floating-promises": "off",
-        "typescript/use-unknown-in-catch-callback-variable": "off",
       },
     },
     {
@@ -613,18 +668,15 @@ export default defineConfig({
         "typescript/no-non-null-assertion": "off",
         "typescript/no-unnecessary-type-assertion": "off",
         "typescript/prefer-nullish-coalescing": "off",
-        "typescript/switch-exhaustiveness-check": "off",
+
         "eslint/no-eq-null": "off",
         "eslint/eqeqeq": "off",
         "typescript/consistent-return": "off",
-        "typescript/no-base-to-string": "off",
-        "typescript/restrict-template-expressions": "off",
+
         "typescript/no-unsafe-return": "off",
         "typescript/no-unsafe-call": "off",
         "typescript/no-unsafe-argument": "off",
-        "typescript/consistent-type-imports": "off",
-        "typescript/prefer-regexp-exec": "off",
-        "typescript/no-redundant-type-constituents": "off",
+
         "typescript/no-deprecated": "off",
         "typescript/promise-function-async": "off",
       },
@@ -648,21 +700,20 @@ export default defineConfig({
         "typescript/prefer-nullish-coalescing": "off",
         "eslint/no-eq-null": "off",
         "eslint/eqeqeq": "off",
-        "typescript/switch-exhaustiveness-check": "off",
+
         "typescript/promise-function-async": "off",
-        "typescript/prefer-regexp-exec": "off",
+
         "unicorn/no-array-for-each": "off",
         "typescript/no-unnecessary-type-conversion": "off",
         "typescript/no-duplicate-type-constituents": "off",
-        "typescript/no-redundant-type-constituents": "off",
+
         "eslint/no-control-regex": "off",
         "typescript/no-deprecated": "off",
         "typescript/consistent-return": "off",
         "typescript/no-unsafe-return": "off",
         "typescript/no-unsafe-call": "off",
         "typescript/no-unsafe-argument": "off",
-        "typescript/restrict-template-expressions": "off",
-        "typescript/no-base-to-string": "off",
+
         "unicorn/prefer-string-starts-ends-with": "off",
         "typescript/prefer-string-starts-ends-with": "off",
       },
@@ -707,9 +758,41 @@ export default defineConfig({
       files: ["apps/api/src/handlers/**/*.ts"],
       rules: {
         "no-body-ownership-ids/no-body-ownership-ids": "error",
+        "no-offset-pagination/no-offset-pagination": [
+          "error",
+          {
+            // Legacy offset-paginated list endpoints. New list endpoints must
+            // use cursor pagination and return Page<T>.
+            allowedFiles: [
+              "apps/api/src/handlers/billing-codes/read.ts",
+              "apps/api/src/handlers/expenses/read.ts",
+              "apps/api/src/handlers/invoices/read.ts",
+              "apps/api/src/handlers/rates/entries-read.ts",
+              "apps/api/src/handlers/rates/read.ts",
+              "apps/api/src/handlers/skills/list.ts",
+              "apps/api/src/handlers/time-entries/read.ts",
+            ],
+          },
+        ],
         "no-raw-user-id-schema/no-raw-user-id-schema": "error",
+        "no-offset-pagination/no-offset-pagination": [
+          "error",
+          {
+            // Existing bounded billing/admin lists. Keep explicit while
+            // these endpoints are migrated or deliberately retained.
+            allowedFiles: [
+              "apps/api/src/handlers/invoices/read.ts",
+              "apps/api/src/handlers/time-entries/read.ts",
+              "apps/api/src/handlers/expenses/read.ts",
+              "apps/api/src/handlers/billing-codes/read.ts",
+              "apps/api/src/handlers/rates/read.ts",
+              "apps/api/src/handlers/rates/entries-read.ts",
+              "apps/api/src/handlers/skills/list.ts",
+            ],
+          },
+        ],
         "no-untyped-updates/no-untyped-updates": "error",
-        "security-guards/no-unscoped-user-query": "warn",
+        "security-guards/no-unscoped-user-query": "error",
         "no-restricted-imports": [
           "error",
           {

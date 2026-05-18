@@ -20,6 +20,7 @@ import {
   getChatToolPolicy,
 } from "@/api/handlers/chat/tools/tool-policy";
 import type { ChatMessage } from "@/api/handlers/chat/types";
+import { loadAnonymizationAllowlistCanonicals } from "@/api/lib/anonymization-allowlist";
 import { loadAnonymizationGazetteerEntries } from "@/api/lib/anonymization-blacklist";
 import type { SafeId } from "@/api/lib/branded-types";
 import { parseDataUrl, toDataUrl } from "@/api/lib/data-url";
@@ -32,6 +33,15 @@ export type ChatThirdPartyBoundary =
       anonymizeFields?: typeof anonymizeTextFields | undefined;
       anonymizationScopeId: string;
       gazetteerEntries: ReturnType<typeof loadAnonymizationGazetteerEntries>;
+      /**
+       * Canonicals the user marked as "ignore" in the inspector
+       * allowlist (workspace and org scopes). Pre-loaded once on
+       * boundary creation so we don't hit the DB per anonymize
+       * call. Doc-scope ignores are skipped here because chat
+       * threads aren't tied to a specific entity in the current
+       * shape.
+       */
+      excludedCanonicals: Promise<string[]>;
       organizationId: SafeId<"organization">;
       /**
        * Shared pipeline context for every anonymization call on
@@ -83,12 +93,20 @@ export const createChatThirdPartyBoundary = ({
   organizationId,
   scopedDb,
   sendMode,
+  workspaceId,
 }: {
   anonymizeFields?: typeof anonymizeTextFields | undefined;
   anonymizationScopeId: string;
   organizationId: SafeId<"organization">;
   scopedDb: ScopedDb;
   sendMode: ChatSendMode;
+  /**
+   * When the chat is workspace-scoped, the validated workspace
+   * SafeId from the workspaceAccessMacro. Threads gazetteer
+   * loading so workspace-specific terms join the org-wide
+   * catalog. Omit for global threads.
+   */
+  workspaceId?: SafeId<"workspace"> | undefined;
 }): ChatThirdPartyBoundary =>
   sendMode === CHAT_SEND_MODE.anonymized
     ? {
@@ -97,7 +115,18 @@ export const createChatThirdPartyBoundary = ({
         anonymizationScopeId,
         gazetteerEntries: anonymizeFields
           ? Promise.resolve([])
-          : loadAnonymizationGazetteerEntries({ organizationId, scopedDb }),
+          : loadAnonymizationGazetteerEntries({
+              organizationId,
+              workspaceId,
+              scopedDb,
+            }),
+        excludedCanonicals: anonymizeFields
+          ? Promise.resolve([])
+          : loadAnonymizationAllowlistCanonicals({
+              organizationId,
+              scopeId: workspaceId,
+              scopedDb,
+            }),
         organizationId,
         pipelineContext: createPipelineContext(),
         redactionMap: new Map<string, string>(),
@@ -287,6 +316,7 @@ export const prepareTextForThirdParty = async ({
         context: boundary.pipelineContext,
         fields: [text],
         gazetteerEntries: await boundary.gazetteerEntries,
+        excludedCanonicals: await boundary.excludedCanonicals,
         organizationId: boundary.organizationId,
         scopedDb: boundary.scopedDb,
         workspaceId: boundary.anonymizationScopeId,
@@ -326,6 +356,7 @@ const prepareTextBatchForThirdParty = async ({
         context: boundary.pipelineContext,
         fields,
         gazetteerEntries: await boundary.gazetteerEntries,
+        excludedCanonicals: await boundary.excludedCanonicals,
         organizationId: boundary.organizationId,
         scopedDb: boundary.scopedDb,
         workspaceId: boundary.anonymizationScopeId,
@@ -744,16 +775,18 @@ const anonymizeToolPart = ({
       });
     }
 
-    const approval =
-      "approval" in part &&
-      part.approval !== undefined &&
-      "reason" in part.approval &&
-      part.approval.reason
-        ? part.approval
-        : undefined;
-    if (approval?.reason) {
+    const approval: unknown = Reflect.get(part, "approval");
+    if (
+      typeof approval === "object" &&
+      approval !== null &&
+      "reason" in approval &&
+      typeof approval.reason === "string" &&
+      approval.reason
+    ) {
       queueTextReplacement(replacements, approval.reason, (value) => {
-        prepared.approval = { ...approval, reason: value };
+        Object.assign(prepared, {
+          approval: { ...approval, reason: value },
+        });
       });
     }
 
@@ -812,7 +845,7 @@ export const prepareToolsForThirdParty = <TTools extends ToolSet>({
           return rawOutput;
         }
 
-        if (deanonymizeInputBeforeExecute && args.length > 0) {
+        if (deanonymizeInputBeforeExecute) {
           // SAFETY: the AI SDK types tool execute's input arg as `any`
           // because each tool defines its own input schema. We
           // recursively walk strings only and preserve every other

@@ -10,6 +10,7 @@ import { createSafeHandler } from "@/api/lib/api-handlers";
 import type { HandlerConfig } from "@/api/lib/api-handlers";
 import { tSafeId } from "@/api/lib/custom-schema";
 import { LIMITS } from "@/api/lib/limits";
+import { createCursorPage } from "@/api/lib/pagination";
 import {
   tViewFilterConditionSchema,
   tViewSortSchema,
@@ -18,6 +19,7 @@ import {
 const readEntitiesWindowBodySchema = t.Object({
   filters: t.Optional(t.Array(tViewFilterConditionSchema)),
   sorts: t.Optional(t.Array(tViewSortSchema)),
+  search: t.Optional(t.String({ maxLength: LIMITS.searchQueryMaxLength })),
   limit: t.Optional(
     t.Integer({
       minimum: 1,
@@ -36,6 +38,7 @@ const readEntitiesWindowBodySchema = t.Object({
       maxItems: LIMITS.propertiesCount,
     }),
   ),
+  previewableForAi: t.Optional(t.Boolean()),
 });
 
 const config = {
@@ -61,23 +64,24 @@ const readEntitiesWindow = createSafeHandler(
         currentOrganizationId: session.activeOrganizationId,
         filters: body.filters ?? [],
         sorts: body.sorts ?? [],
+        ...(body.search !== undefined && { search: body.search }),
         offset,
         limit: limit + 1,
         fieldMode: body.fieldMode ?? "full",
         fieldIds: body.fieldIds ?? [],
         excludedKinds: body.excludedKinds ?? [],
+        previewableForAi: body.previewableForAi ?? false,
         includeTotalCount: false,
       }),
     );
 
-    const hasMore = result.entities.length > limit;
-    const entities = result.entities.slice(0, limit);
-
-    return Result.ok({
-      entities,
-      limit,
-      nextCursor: hasMore ? encodeEntitiesWindowCursor(offset + limit) : null,
-    });
+    return Result.ok(
+      createCursorPage({
+        rows: result.entities,
+        limit,
+        cursorForItem: () => encodeEntitiesWindowCursor(offset + limit),
+      }),
+    );
   },
 );
 

@@ -48,7 +48,7 @@ const formatSqlValue = (value: unknown): string => {
     return "";
   }
 
-  return JSON.stringify(value) ?? "";
+  return JSON.stringify(value);
 };
 
 // ── Citation normalization ──────────────────────────────
@@ -537,11 +537,12 @@ const printReport = async () => {
     const citationText = formatSqlValue(row["citation_text"]);
     const count = formatSqlValue(row["cnt"]);
     const norm = normalizeCitation(citationText);
-    const suffix = norm.caseNumber
-      ? ` → "${norm.caseNumber}"`
-      : norm.ecli
-        ? ` → ECLI`
-        : " → ???";
+    let suffix = " → ???";
+    if (norm.caseNumber) {
+      suffix = ` → "${norm.caseNumber}"`;
+    } else if (norm.ecli) {
+      suffix = " → ECLI";
+    }
     console.log(`  [${count}x] ${citationText}${suffix}`);
   }
 
@@ -659,13 +660,13 @@ const printReport = async () => {
 
 // ── Main ────────────────────────────────────────────────
 
-console.log(
-  DRY_RUN
-    ? "=== DRY RUN (no DB writes) ==="
-    : REPORT_ONLY
-      ? "=== REPORT ONLY ==="
-      : "=== RESOLVING CITATIONS ===",
-);
+let runModeLabel = "=== RESOLVING CITATIONS ===";
+if (DRY_RUN) {
+  runModeLabel = "=== DRY RUN (no DB writes) ===";
+} else if (REPORT_ONLY) {
+  runModeLabel = "=== REPORT ONLY ===";
+}
+console.log(runModeLabel);
 
 if (!REPORT_ONLY) {
   if (!DRY_RUN) {

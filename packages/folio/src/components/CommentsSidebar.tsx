@@ -22,6 +22,7 @@ import { CheckIcon, MoreVerticalIcon } from "lucide-react";
 import { useLocale, useTranslations } from "use-intl";
 
 import type { Comment, Paragraph } from "../core/types/content";
+import { closestHtmlElement, queryHtmlElement } from "../core/utils/domGuards";
 
 /** Extract plain text from a Comment's paragraph content */
 function getCommentText(paragraphs?: Paragraph[]): string {
@@ -62,6 +63,11 @@ function getInitials(name: string): string {
     .join("")
     .toUpperCase()
     .slice(0, 2);
+}
+
+function getCommentParentId(comment: Comment): number | null | undefined {
+  const runtimeComment: { parentId?: number | null } = comment;
+  return runtimeComment.parentId;
 }
 
 // Kibana-style avatar colors — deterministic per author name
@@ -213,10 +219,10 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   const updateSidebarLeft = useCallback(() => {
     const scrollEl = editorContainerRef?.current;
     const sidebarEl = sidebarRef.current;
-    const pageEl = scrollEl?.querySelector(
-      ".layout-page",
-    ) as HTMLElement | null;
-    const offsetParent = sidebarEl?.offsetParent as HTMLElement | null;
+    const pageEl = scrollEl ? queryHtmlElement(scrollEl, ".layout-page") : null;
+    const offsetParentRaw = sidebarEl?.offsetParent;
+    const offsetParent =
+      offsetParentRaw instanceof HTMLElement ? offsetParentRaw : null;
 
     if (!scrollEl || !pageEl || !offsetParent) {
       setMeasuredLeft(null);
@@ -257,7 +263,8 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   const visibleComments = useMemo(
     () =>
       comments.filter((c) => {
-        if (c.parentId !== null && c.parentId !== undefined) {
+        const parentId = getCommentParentId(c);
+        if (parentId !== null && parentId !== undefined) {
           return false;
         }
         if (c.done && !showResolved) {
@@ -272,12 +279,13 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   const repliesByParent = useMemo(() => {
     const map = new Map<number, Comment[]>();
     for (const c of comments) {
-      if (c.parentId !== null && c.parentId !== undefined) {
-        const arr = map.get(c.parentId);
+      const parentId = getCommentParentId(c);
+      if (parentId !== null && parentId !== undefined) {
+        const arr = map.get(parentId);
         if (arr) {
           arr.push(c);
         } else {
-          map.set(c.parentId, [c]);
+          map.set(parentId, [c]);
         }
       }
     }
@@ -327,7 +335,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
       }
 
       const layoutY = anchorPositions?.get(cardId);
-      if (layoutY !== null && layoutY !== undefined) {
+      if (layoutY !== undefined) {
         pushPosition(
           cardId,
           layoutY,
@@ -360,11 +368,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     }
 
     // Include the "add comment" input box in the layout if it has a Y position
-    if (
-      isAddingComment &&
-      addCommentYPosition !== null &&
-      addCommentYPosition !== undefined
-    ) {
+    if (isAddingComment && addCommentYPosition !== null) {
       positions.push({
         id: "new-comment-input",
         targetY: addCommentYPosition,
@@ -421,7 +425,10 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     }
 
     const handleDocClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
+      const target = e.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
 
       // Clicks inside the sidebar itself are handled by card onClick — ignore here
       if (sidebarRef.current?.contains(target)) {
@@ -430,9 +437,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
 
       // Clicks inside the pages area — check for comment highlights
       if (pagesEl.contains(target)) {
-        const commentEl = target.closest(
-          "[data-comment-id]",
-        ) as HTMLElement | null;
+        const commentEl = closestHtmlElement(target, "[data-comment-id]");
         if (commentEl?.dataset["commentId"]) {
           setExpandedCard(`comment-${commentEl.dataset["commentId"]}`);
           onCommentClick?.(Number(commentEl.dataset["commentId"]));
@@ -555,7 +560,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   };
 
   useEffect(() => {
-    if (activeCommentId === null || activeCommentId === undefined) {
+    if (activeCommentId === null) {
       return;
     }
     setExpandedCard(`comment-${activeCommentId}`);
@@ -629,19 +634,36 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     // Cards without position yet: hidden completely (no transition)
     const isNewCard = !isKnown && yPos !== undefined;
     const noPosition = hasPositions && yPos === undefined;
+    const positionStyle = (() => {
+      if (!hasPositions) {
+        return { marginBottom: 6 };
+      }
+      if (yPos !== undefined) {
+        return {
+          position: "absolute" as const,
+          top: yPos,
+          left: 0,
+          right: 0,
+          opacity: 1,
+        };
+      }
+      return {
+        position: "absolute" as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        opacity: 0,
+        visibility: "hidden" as const,
+      };
+    })();
+    let transition = "none";
+    if (!noPosition && isNewCard) {
+      transition = "opacity 0.2s ease, box-shadow 0.2s ease";
+    } else if (!noPosition && initialPositionsDone) {
+      transition = "opacity 0.2s ease, box-shadow 0.2s ease, top 0.15s ease";
+    }
     return {
-      ...(hasPositions
-        ? yPos !== undefined
-          ? { position: "absolute", top: yPos, left: 0, right: 0, opacity: 1 }
-          : {
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              opacity: 0,
-              visibility: "hidden" as const,
-            }
-        : { marginBottom: 6 }),
+      ...positionStyle,
       padding: isExpanded ? "8px 10px" : "7px 9px",
       borderRadius: 6,
       backgroundColor: "var(--doc-page)",
@@ -649,13 +671,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
       boxShadow: isExpanded
         ? "0 1px 2px rgba(60,64,67,0.22), 0 3px 8px rgba(60,64,67,0.12)"
         : "0 1px 2px rgba(60,64,67,0.16), 0 2px 5px rgba(60,64,67,0.08)",
-      transition: noPosition
-        ? "none"
-        : isNewCard
-          ? "opacity 0.2s ease, box-shadow 0.2s ease"
-          : initialPositionsDone
-            ? "opacity 0.2s ease, box-shadow 0.2s ease, top 0.15s ease"
-            : "none",
+      transition,
     };
   };
 
@@ -966,20 +982,18 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
                       fontFamily: "inherit",
                     }}
                     onMouseOver={(e) => {
-                      (e.target as HTMLElement).style.backgroundColor =
+                      e.currentTarget.style.backgroundColor =
                         "var(--doc-primary-light)";
                     }}
                     onFocus={(e) => {
-                      (e.target as HTMLElement).style.backgroundColor =
+                      e.currentTarget.style.backgroundColor =
                         "var(--doc-primary-light)";
                     }}
                     onMouseOut={(e) => {
-                      (e.target as HTMLElement).style.backgroundColor =
-                        "transparent";
+                      e.currentTarget.style.backgroundColor = "transparent";
                     }}
                     onBlur={(e) => {
-                      (e.target as HTMLElement).style.backgroundColor =
-                        "transparent";
+                      e.currentTarget.style.backgroundColor = "transparent";
                     }}
                   >
                     Delete
@@ -1049,19 +1063,24 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
               }
             }}
             style={{
-              ...(hasPositions
-                ? cardPositions.get("new-comment-input") !== undefined
-                  ? {
-                      position: "absolute",
-                      top: cardPositions.get("new-comment-input"),
-                      left: 0,
-                      right: 0,
-                    }
-                  : {
-                      position: "relative",
-                      marginBottom: 8,
-                    }
-                : { marginBottom: 8 }),
+              ...(() => {
+                const yPos = cardPositions.get("new-comment-input");
+                if (!hasPositions) {
+                  return { marginBottom: 8 };
+                }
+                if (yPos !== undefined) {
+                  return {
+                    position: "absolute" as const,
+                    top: yPos,
+                    left: 0,
+                    right: 0,
+                  };
+                }
+                return {
+                  position: "relative" as const,
+                  marginBottom: 8,
+                };
+              })(),
               padding: 10,
               borderRadius: 6,
               border: "1px solid var(--border, var(--doc-border))",

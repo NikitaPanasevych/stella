@@ -72,19 +72,25 @@ export const CLIPBOARD_TYPES = {
 /**
  * Extract image files from clipboard data (if present).
  */
+type ClipboardDataLike = {
+  files?: FileList | readonly File[] | undefined;
+  items?: DataTransferItemList | readonly DataTransferItem[] | undefined;
+};
+
 export function getClipboardImageFiles(
-  clipboardData: DataTransfer | null,
+  clipboardData: ClipboardDataLike | null,
 ): File[] {
   if (!clipboardData) {
     return [];
   }
 
   const collectFromItems = (): File[] => {
-    if (!clipboardData.items || clipboardData.items.length === 0) {
+    const items = clipboardData.items;
+    if (!items || items.length === 0) {
       return [];
     }
     const files: File[] = [];
-    for (const item of Array.from(clipboardData.items)) {
+    for (const item of Array.from(items)) {
       if (item.kind !== "file") {
         continue;
       }
@@ -100,10 +106,11 @@ export function getClipboardImageFiles(
   };
 
   const collectFromFiles = (): File[] => {
-    if (!clipboardData.files || clipboardData.files.length === 0) {
+    const clipboardFiles = clipboardData.files;
+    if (!clipboardFiles || clipboardFiles.length === 0) {
       return [];
     }
-    return Array.from(clipboardData.files).filter((file) =>
+    return Array.from(clipboardFiles).filter((file) =>
       file.type.startsWith("image/"),
     );
   };
@@ -155,7 +162,7 @@ export function getClipboardImageFiles(
 
   const groups = new Map<string, File[]>();
   for (const file of files) {
-    const rawName = file.name?.trim() ?? "";
+    const rawName = file.name.trim();
     const baseName = rawName
       ? rawName.replace(/\.[^/.]+$/, "").toLowerCase()
       : "";
@@ -254,23 +261,18 @@ export async function writeToClipboard(
 ): Promise<boolean> {
   try {
     // Try to use the modern Clipboard API
-    if (navigator.clipboard && navigator.clipboard.write) {
-      const items = [
-        new ClipboardItem({
-          [CLIPBOARD_TYPES.PLAIN]: new Blob([content.plainText], {
-            type: CLIPBOARD_TYPES.PLAIN,
-          }),
-          [CLIPBOARD_TYPES.HTML]: new Blob([content.html], {
-            type: CLIPBOARD_TYPES.HTML,
-          }),
+    const items = [
+      new ClipboardItem({
+        [CLIPBOARD_TYPES.PLAIN]: new Blob([content.plainText], {
+          type: CLIPBOARD_TYPES.PLAIN,
         }),
-      ];
-      await navigator.clipboard.write(items);
-      return true;
-    }
-
-    // Fallback to execCommand
-    return writeToClipboardFallback(content);
+        [CLIPBOARD_TYPES.HTML]: new Blob([content.html], {
+          type: CLIPBOARD_TYPES.HTML,
+        }),
+      }),
+    ];
+    await navigator.clipboard.write(items);
+    return true;
   } catch {
     // Fallback to execCommand
     return writeToClipboardFallback(content);
@@ -320,13 +322,8 @@ export async function readFromClipboard(
 
   try {
     // Try modern Clipboard API
-    if (navigator.clipboard && navigator.clipboard.read) {
-      const items = await navigator.clipboard.read();
-      return await parseClipboardItems(items, cleanWordFormatting);
-    }
-
-    // Fallback to reading from event
-    return null;
+    const items = await navigator.clipboard.read();
+    return await parseClipboardItems(items, cleanWordFormatting);
   } catch (error) {
     onError?.(error as Error);
     return null;
@@ -394,7 +391,7 @@ export function parseClipboardHtml(
   // If from our editor, try to parse internal format
   if (fromEditor) {
     // Look for internal data in HTML comments or data attributes
-    const internalMatch = html.match(/data-folio-content="([^"]+)"/);
+    const internalMatch = /data-folio-content="([^"]+)"/.exec(html);
     if (internalMatch) {
       try {
         // SAFETY: match group 1 always captures in this regex
@@ -551,11 +548,11 @@ function processNode(
     return;
   }
 
-  if (node.nodeType !== Node.ELEMENT_NODE) {
+  if (!(node instanceof HTMLElement)) {
     return;
   }
 
-  const element = node as HTMLElement;
+  const element = node;
   const tagName = element.tagName.toLowerCase();
 
   // Merge formatting from this element
@@ -706,7 +703,7 @@ function colorToHex(color: string): string | null {
   }
 
   // RGB/RGBA
-  const rgbMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  const rgbMatch = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(color);
   if (rgbMatch) {
     // SAFETY: regex has 3 capture groups; all present when match succeeds
     const r = Number.parseInt(rgbMatch[1]!, 10).toString(16).padStart(2, "0");
@@ -746,7 +743,7 @@ function getRunText(run: Run): string {
  * Get plain text from a paragraph
  */
 function getParagraphText(paragraph: Paragraph): string {
-  return (paragraph.content || [])
+  return paragraph.content
     .map((content) => {
       if (content.type === "run") {
         return getRunText(content);
@@ -770,7 +767,7 @@ function paragraphsToHtml(paragraphs: Paragraph[]): string {
   return paragraphs
     .map(
       (p) =>
-        `<p>${runsToHtml(p.content?.filter((c): c is Run => c.type === "run") || [])}</p>`,
+        `<p>${runsToHtml(p.content.filter((c): c is Run => c.type === "run"))}</p>`,
     )
     .join("");
 }

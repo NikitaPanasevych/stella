@@ -16,6 +16,7 @@ import type {
   ImageWrap,
   ImagePosition,
   ImageTransform,
+  ShapeFill,
   ShapeOutline,
   SectionProperties,
   SectionStart,
@@ -200,6 +201,18 @@ function convertPMParagraph(
     };
   }
 
+  // Restore `w:pPrChange` entries that PM carried opaquely. The editor
+  // doesn't surface them in UI, but they must survive an edit so the
+  // saved DOCX still contains the property-change history Word relies
+  // on. Shallow-clone the array so the rebuilt Folio document doesn't
+  // share a mutable reference with PM's attrs.
+  if (
+    Array.isArray(attrs._propertyChanges) &&
+    attrs._propertyChanges.length > 0
+  ) {
+    paragraph.propertyChanges = [...attrs._propertyChanges];
+  }
+
   return paragraph;
 }
 
@@ -272,6 +285,7 @@ function paragraphAttrsToFormatting(
 
   // Fallback: reconstruct formatting from individual attrs (e.g. for
   // newly created paragraphs that don't have _originalFormatting)
+  const outlineLevel = Reflect.get(attrs, "outlineLevel");
   const hasFormatting =
     attrs.alignment ||
     attrs.spaceBefore ||
@@ -285,7 +299,7 @@ function paragraphAttrsToFormatting(
     attrs.borders ||
     attrs.shading ||
     attrs.tabs ||
-    attrs.outlineLevel !== null ||
+    typeof outlineLevel === "number" ||
     attrs.contextualSpacing ||
     attrs.spacingExplicit ||
     attrs.bidi;
@@ -340,8 +354,8 @@ function paragraphAttrsToFormatting(
   if (attrs.tabs) {
     f.tabs = attrs.tabs;
   }
-  if (attrs.outlineLevel !== undefined && attrs.outlineLevel !== null) {
-    f.outlineLevel = attrs.outlineLevel;
+  if (typeof outlineLevel === "number") {
+    f.outlineLevel = outlineLevel;
   }
   if (attrs.contextualSpacing) {
     f.contextualSpacing = attrs.contextualSpacing;
@@ -360,11 +374,13 @@ function paragraphAttrsToFormatting(
  */
 function extractParagraphContent(
   paragraph: PMNode,
-  documentCounts?: TrackedChangeCounts,
+  // Parameter retained for signature compatibility with the call sites
+  // threaded through tables/cells. The body no longer needs the counts
+  // — `moveFrom`/`moveTo` round-trip is now driven by the explicit
+  // `moveKind` mark attribute set by `toProseDoc`.
+  _documentCounts?: TrackedChangeCounts,
 ): ParagraphContent[] {
   const content: ParagraphContent[] = [];
-  const trackedChangeCounts =
-    documentCounts ?? buildDocumentTrackedChangeCounts(paragraph);
 
   // Track current run being built
   let currentRun: Run | null = null;
@@ -477,20 +493,22 @@ function extractParagraphContent(
       if (dateStr) {
         info.date = dateStr;
       }
-      const revisionId = info.id;
-      const hasInsertionForId =
-        (trackedChangeCounts.insertionById.get(revisionId) ?? 0) > 0;
-      const hasDeletionForId =
-        (trackedChangeCounts.deletionById.get(revisionId) ?? 0) > 0;
-      const isMovePair = hasInsertionForId && hasDeletionForId;
-
+      // The mark itself records whether it originated as a
+      // `w:moveTo` / `w:moveFrom`. The previous "is there both an
+      // insertion AND a deletion with the same revisionId somewhere
+      // in the document?" heuristic was unsound: OOXML doesn't
+      // require `w:moveFrom`/`w:moveTo` to share `w:id` (they
+      // typically don't), and unrelated `w:ins w:id="5"` /
+      // `w:del w:id="5"` from different reviewers would coincidentally
+      // fuse into a phantom move pair.
+      const moveKind = changeMark.attrs["moveKind"];
       if (insertionMark) {
-        if (isMovePair) {
+        if (moveKind === "moveTo") {
           content.push({ type: "moveTo", info, content: [run] });
         } else {
           content.push({ type: "insertion", info, content: [run] });
         }
-      } else if (isMovePair) {
+      } else if (moveKind === "moveFrom") {
         content.push({ type: "moveFrom", info, content: [run] });
       } else {
         content.push({ type: "deletion", info, content: [run] });
@@ -655,7 +673,7 @@ function getMarksKey(marks: readonly Mark[]): string {
 function createHyperlink(linkMark: Mark): Hyperlink {
   const href = linkMark.attrs["href"] as string;
   // Internal bookmark links use the anchor property in OOXML
-  if (href?.startsWith("#")) {
+  if (href.startsWith("#")) {
     return {
       type: "hyperlink",
       anchor: href.slice(1),
@@ -826,7 +844,7 @@ function createMathFromNode(node: PMNode): MathEquation {
 
   const math: MathEquation = {
     type: "mathEquation",
-    display: (attrs.display as "inline" | "block") || "inline",
+    display: (attrs.display as "inline" | "block" | undefined) ?? "inline",
     ommlXml: attrs.ommlXml,
   };
   if (attrs.plainText) {
@@ -842,7 +860,8 @@ function createInlineSdtFromNode(node: PMNode): InlineSdt {
   const attrs = node.attrs as Record<string, unknown>;
 
   const properties: SdtProperties = {
-    sdtType: (attrs["sdtType"] as SdtProperties["sdtType"]) ?? "richText",
+    sdtType:
+      (attrs["sdtType"] as SdtProperties["sdtType"] | undefined) ?? "richText",
   };
   if (attrs["alias"]) {
     properties.alias = attrs["alias"] as string;
@@ -934,7 +953,7 @@ function createImageRun(node: PMNode): Run {
   if (attrs.transform) {
     const transformStr = attrs.transform;
     const imgTransform: ImageTransform = {};
-    const rotateMatch = transformStr.match(/rotate\(([-\d.]+)deg\)/);
+    const rotateMatch = /rotate\(([-\d.]+)deg\)/.exec(transformStr);
     if (rotateMatch) {
       // SAFETY: capture group [1] always present when regex matches
       imgTransform.rotation = Number.parseFloat(rotateMatch[1]!);
@@ -952,7 +971,7 @@ function createImageRun(node: PMNode): Run {
 
   // Round-trip floating image position (ImagePositionAttrs uses loose strings;
   // cast to the strict OOXML union types for the Document model)
-  if (attrs.position?.horizontal && attrs.position?.vertical) {
+  if (attrs.position?.horizontal && attrs.position.vertical) {
     const pos = attrs.position;
     type HRelativeTo = ImagePosition["horizontal"]["relativeTo"];
     type HAlignment = ImagePosition["horizontal"]["alignment"];
@@ -1049,9 +1068,7 @@ function createShapeRun(node: PMNode): Run {
         position: number;
         color: string;
       }[];
-      const gradient: NonNullable<
-        import("../../types/content").ShapeFill["gradient"]
-      > = {
+      const gradient: NonNullable<ShapeFill["gradient"]> = {
         type: (attrs.gradientType || "linear") as
           | "linear"
           | "radial"
@@ -1425,13 +1442,21 @@ function tableAttrsToFormatting(
       }
     }
     // Width: check if changed
+    const tableWidth = Reflect.get(attrs, "width");
+    const tableWidthType = Reflect.get(attrs, "widthType");
     const origWidthVal = orig.width?.value;
     const origWidthType = orig.width?.type;
-    if (attrs.width !== origWidthVal || attrs.widthType !== origWidthType) {
-      if (attrs.width !== null || attrs.widthType) {
+    if (tableWidth !== origWidthVal || tableWidthType !== origWidthType) {
+      if (
+        typeof tableWidth === "number" ||
+        typeof tableWidthType === "string"
+      ) {
         result.width = {
-          value: attrs.width ?? 0,
-          type: (attrs.widthType as "auto" | "dxa" | "pct" | "nil") || "dxa",
+          value: typeof tableWidth === "number" ? tableWidth : 0,
+          type:
+            typeof tableWidthType === "string"
+              ? (tableWidthType as "auto" | "dxa" | "pct" | "nil")
+              : "dxa",
         };
       } else {
         delete result.width;
@@ -1447,10 +1472,12 @@ function tableAttrsToFormatting(
 
   // Fallback: reconstruct formatting from individual attrs (e.g. for
   // newly created tables that don't have _originalFormatting)
+  const tableWidth = Reflect.get(attrs, "width");
+  const tableWidthType = Reflect.get(attrs, "widthType");
   const hasFormatting =
     attrs.styleId ||
-    attrs.width !== null ||
-    attrs.widthType ||
+    typeof tableWidth === "number" ||
+    typeof tableWidthType === "string" ||
     attrs.justification ||
     attrs.floating ||
     attrs.cellMargins ||
@@ -1467,10 +1494,13 @@ function tableAttrsToFormatting(
 
   // Restore width — handle width=0 with type="auto" (common OOXML pattern)
   let width: TableFormatting["width"];
-  if (attrs.width !== null || attrs.widthType) {
+  if (typeof tableWidth === "number" || typeof tableWidthType === "string") {
     width = {
-      value: attrs.width ?? 0,
-      type: (attrs.widthType as "auto" | "dxa" | "pct" | "nil") || "dxa",
+      value: typeof tableWidth === "number" ? tableWidth : 0,
+      type:
+        typeof tableWidthType === "string"
+          ? (tableWidthType as "auto" | "dxa" | "pct" | "nil")
+          : "dxa",
     };
   }
 
@@ -1629,11 +1659,16 @@ function tableCellAttrsToFormatting(
     if (attrs.colspan > 1) {
       result.gridSpan = attrs.colspan;
     }
-    // Width: use !== null to handle width=0 correctly (ProseMirror can set null)
-    if (attrs.width !== null) {
+    const cellWidth = Reflect.get(attrs, "width");
+    // Width: keep null absent while preserving explicit width=0 values.
+    if (typeof cellWidth === "number") {
+      const cellWidthType = Reflect.get(attrs, "widthType");
       result.width = {
-        value: attrs.width ?? 0,
-        type: (attrs.widthType as "auto" | "dxa" | "pct" | "nil") || "dxa",
+        value: cellWidth,
+        type:
+          typeof cellWidthType === "string"
+            ? (cellWidthType as "auto" | "dxa" | "pct" | "nil")
+            : "dxa",
       };
     }
     if (attrs.verticalAlign !== (orig.verticalAlign ?? undefined)) {
@@ -1671,10 +1706,11 @@ function tableCellAttrsToFormatting(
   }
 
   // Fallback: reconstruct formatting from individual attrs
+  const cellWidth = Reflect.get(attrs, "width");
   const hasFormatting =
     attrs.colspan > 1 ||
     attrs.rowspan > 1 ||
-    attrs.width !== null ||
+    typeof cellWidth === "number" ||
     attrs.verticalAlign ||
     attrs.backgroundColor ||
     attrs.borders ||
@@ -1689,10 +1725,14 @@ function tableCellAttrsToFormatting(
   if (attrs.colspan > 1) {
     f.gridSpan = attrs.colspan;
   }
-  if (attrs.width !== null) {
+  if (typeof cellWidth === "number") {
+    const cellWidthType = Reflect.get(attrs, "widthType");
     f.width = {
-      value: attrs.width ?? 0,
-      type: (attrs.widthType as "auto" | "dxa" | "pct" | "nil") || "dxa",
+      value: cellWidth,
+      type:
+        typeof cellWidthType === "string"
+          ? (cellWidthType as "auto" | "dxa" | "pct" | "nil")
+          : "dxa",
     };
   }
   if (attrs.verticalAlign) {
@@ -1756,16 +1796,16 @@ function convertPMTextBox(node: PMNode): Paragraph {
           left?: number;
           right?: number;
         } = {};
-        if (attrs.marginTop !== null && attrs.marginTop !== undefined) {
+        if (typeof attrs.marginTop === "number") {
           m.top = pixelsToEmu(attrs.marginTop);
         }
-        if (attrs.marginBottom !== null && attrs.marginBottom !== undefined) {
+        if (typeof attrs.marginBottom === "number") {
           m.bottom = pixelsToEmu(attrs.marginBottom);
         }
-        if (attrs.marginLeft !== null && attrs.marginLeft !== undefined) {
+        if (typeof attrs.marginLeft === "number") {
           m.left = pixelsToEmu(attrs.marginLeft);
         }
-        if (attrs.marginRight !== null && attrs.marginRight !== undefined) {
+        if (typeof attrs.marginRight === "number") {
           m.right = pixelsToEmu(attrs.marginRight);
         }
         return m;

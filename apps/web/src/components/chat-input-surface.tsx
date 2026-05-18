@@ -7,6 +7,7 @@ import { useTranslations } from "use-intl";
 import { Button } from "@stll/ui/components/button";
 import { cn } from "@stll/ui/lib/utils";
 
+import { useChatComposerWiring } from "@/components/chat-editor-provider";
 import type {
   ChatEditorController,
   ChatInputDraft,
@@ -30,7 +31,7 @@ type ChatInputSurfaceProps = {
   onStop?: () => void;
   /**
    * Whether this surface will send the next request anonymized.
-   * Drives the green-ring "shield active" treatment so the cue
+   * Drives the blue-ring "shield active" treatment so the cue
    * matches what gets sent. The shared input is mounted from
    * surfaces with different toggle scopes (per-thread store on
    * `/chat`, local state in the inspector tab, none in the file
@@ -67,32 +68,20 @@ export const ChatInputSurface = ({
     isEmpty,
     openFilePicker,
     removeFile,
-    setSubmitHandler,
-    submit,
   } = controller;
   const inputDisabled = disabled;
+  // While the assistant is streaming we render Stop in place of Send,
+  // but Enter still calls submit unless we gate it here. Without this
+  // guard, a user pressing Enter during a turn fires an overlapping
+  // `sendMessage` and the two responses interleave.
   const submitDisabled = disabled || isGenerating;
 
-  const submitDraft = useCallback(async () => {
-    // While the assistant is streaming we render Stop in place of
-    // Send, but Enter still calls submit unless we gate it here.
-    // Without this guard, a user pressing Enter during a turn fires
-    // an overlapping `sendMessage` and the two responses interleave.
-    if (submitDisabled) {
-      return;
-    }
-
-    await submit(async (draft) => {
-      await onSubmit(draft);
-    });
-  }, [onSubmit, submit, submitDisabled]);
-
-  useEffect(() => {
-    setSubmitHandler(submitDraft);
-    return () => {
-      setSubmitHandler(null);
-    };
-  }, [setSubmitHandler, submitDraft]);
+  const { submitDraft } = useChatComposerWiring({
+    controller,
+    inputDisabled,
+    onSubmit,
+    submitDisabled,
+  });
 
   useEffect(() => {
     if (!autoFocus) {
@@ -101,13 +90,6 @@ export const ChatInputSurface = ({
 
     focus();
   }, [autoFocus, focus]);
-
-  useEffect(() => {
-    editor?.setEditable(!inputDisabled);
-    if (inputDisabled) {
-      editor?.commands.blur();
-    }
-  }, [editor, inputDisabled]);
 
   const handleFocus = useCallback(() => {
     onFocusChange?.(true);
@@ -132,10 +114,10 @@ export const ChatInputSurface = ({
         "transition-colors",
         // Default focus border (gray) only when not in anonymized
         // mode — otherwise the gray border landed on top of the
-        // green ring and read as a double-ring on click.
+        // blue ring and read as a double-ring on click.
         !inputDisabled && !anonymized && "focus-within:border-ring",
         anonymized &&
-          "ring-success/40 border-success/40 focus-within:border-success/60 shadow-[0_0_0_4px_rgb(from_var(--color-success)_r_g_b_/_0.08)] ring-1",
+          "ring-info/40 border-info/40 focus-within:border-info/60 shadow-[0_0_0_4px_rgb(from_var(--color-info)_r_g_b_/_0.08)] ring-1",
         className,
       )}
       onBlurCapture={handleBlur}

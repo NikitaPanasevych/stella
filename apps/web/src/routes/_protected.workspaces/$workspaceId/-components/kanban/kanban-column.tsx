@@ -243,12 +243,14 @@ export const KanbanColumn = ({
           setClosestColumnEdge(null);
           // Column reorder is handled by the board-level
           // monitor (forgiving: works even if dropped in gap).
-          if (source.data["type"] === ENTITY_DRAG_TYPE) {
-            // SAFETY: entityId is always a string; set by our own draggable getInitialData.
-            // eslint-disable-next-line typescript/no-unsafe-type-assertion
-            const entityId = source.data["entityId"] as string;
-            onDropRef.current(entityId);
+          if (source.data["type"] !== ENTITY_DRAG_TYPE) {
+            return;
           }
+          const entityId = source.data["entityId"];
+          if (typeof entityId !== "string") {
+            return;
+          }
+          onDropRef.current(entityId);
         },
       }),
     ];
@@ -274,7 +276,7 @@ export const KanbanColumn = ({
 
     // Column draggable: entire column is the element,
     // grip icon is the drag handle (Trello-style).
-    if (isDraggable && handle && columnValue !== null) {
+    if (isDraggable && handle) {
       cleanups.push(
         draggable({
           element: el,
@@ -358,25 +360,33 @@ export const KanbanColumn = ({
         </div>
       )}
       <div className="flex items-center gap-2 px-3 py-2">
-        {color && onChangeColor ? (
-          <ColorPicker
-            value={optionColor}
-            onSelect={handleColorSelect}
-            side="bottom"
-          >
-            <button className="shrink-0 cursor-pointer" type="button">
+        {(() => {
+          if (color && onChangeColor) {
+            return (
+              <ColorPicker
+                value={optionColor}
+                onSelect={handleColorSelect}
+                side="bottom"
+              >
+                <button className="shrink-0 cursor-pointer" type="button">
+                  <span
+                    className="block size-2.5 rounded-full"
+                    style={{ backgroundColor: color }}
+                  />
+                </button>
+              </ColorPicker>
+            );
+          }
+          if (color) {
+            return (
               <span
-                className="block size-2.5 rounded-full"
+                className="size-2.5 rounded-full"
                 style={{ backgroundColor: color }}
               />
-            </button>
-          </ColorPicker>
-        ) : color ? (
-          <span
-            className="size-2.5 rounded-full"
-            style={{ backgroundColor: color }}
-          />
-        ) : null}
+            );
+          }
+          return null;
+        })()}
         {editing ? (
           <InlineEdit
             className="flex-1"

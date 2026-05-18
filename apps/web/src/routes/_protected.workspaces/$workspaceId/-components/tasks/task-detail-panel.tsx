@@ -112,7 +112,7 @@ export const TaskDetailPanel = ({
   // Auto-assign current user and focus name for new tasks
   const didAutoAssign = useRef(false);
   useEffect(() => {
-    if (isNewTask && task && !isLoading) {
+    if (isNewTask && task) {
       setEditNameValue("");
       setIsEditingName(true);
       clearNewFlag(taskId);
@@ -120,7 +120,7 @@ export const TaskDetailPanel = ({
       // Auto-assign the signed-in user
       if (!didAutoAssign.current) {
         didAutoAssign.current = true;
-        const alreadyAssigned = task.assignees?.some(
+        const alreadyAssigned = task.assignees.some(
           (a) => a.user.id === userId,
         );
         if (!alreadyAssigned) {
@@ -202,11 +202,10 @@ export const TaskDetailPanel = ({
 
   // Sync task status to the inspector tab icon so the vertical
   // tab bar reflects the current status color.
-  const resolvedStatus = task
-    ? isTaskStatus(task.status)
-      ? task.status
-      : "open"
-    : null;
+  let resolvedStatus: TaskStatus | null = null;
+  if (task) {
+    resolvedStatus = isTaskStatus(task.status) ? task.status : "open";
+  }
   useEffect(() => {
     if (resolvedStatus !== null) {
       useInspectorStore.getState().updateTaskStatus(taskId, resolvedStatus);
@@ -246,7 +245,7 @@ export const TaskDetailPanel = ({
           )}
         >
           <span className="text-muted-foreground flex-1 text-xs">
-            Task not found
+            {t("notFound")}
           </span>
           <Button onClick={handleClose} size="icon-xs" variant="ghost">
             <XIcon className="size-3.5" />
@@ -300,7 +299,7 @@ export const TaskDetailPanel = ({
                 }
                 if (e.key === "Escape") {
                   setIsEditingName(false);
-                  setEditNameValue(task?.name ?? "");
+                  setEditNameValue(task.name ?? "");
                 }
               }}
               placeholder={t("untitled")}
@@ -341,7 +340,7 @@ export const TaskDetailPanel = ({
 
           <MetadataRow label={t("assignees")}>
             <AssigneePicker
-              assignees={task.assignees ?? []}
+              assignees={task.assignees}
               taskId={taskId}
               workspaceId={workspaceId}
             />
@@ -351,13 +350,13 @@ export const TaskDetailPanel = ({
         {/* Subtasks */}
         <SubtasksSection
           onToggle={handleSubtaskToggle}
-          subtasks={task.children ?? []}
+          subtasks={task.children}
         />
 
         {/* Links */}
         <LinksSection
-          linkedFrom={task.linksAsSource ?? []}
-          linkedTo={task.linksAsTarget ?? []}
+          linkedFrom={task.linksAsSource}
+          linkedTo={task.linksAsTarget}
         />
       </ScrollArea>
     </div>

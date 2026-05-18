@@ -54,7 +54,7 @@ export const PageCitation = ({
   const highlightPadding = originalWidth * HIGHLIGHT_PADDING_RATIO * scale;
 
   const topBoundingBox = boundingBoxes
-    ?.toSorted((a, b) => a.yMin - b.yMin)
+    .toSorted((a, b) => a.yMin - b.yMin)
     .at(0);
   const topBoundingBoxKey = topBoundingBox
     ? getBoundingBoxKey(topBoundingBox)
@@ -76,14 +76,13 @@ export const PageCitation = ({
         className="pointer-events-none absolute h-0 w-0"
         focusable="false"
       >
-        <title>Page highlight filter</title>
         <filter colorInterpolationFilters="sRGB" id={PAGE_HIGHLIGHT_FILTER_ID}>
           <feComponentTransfer in="SourceGraphic">
             <feFuncA slope={PAGE_HIGHLIGHT_OPACITY} type="linear" />
           </feComponentTransfer>
         </filter>
       </svg>
-      {boundingBoxes?.map((bBox) => {
+      {boundingBoxes.map((bBox) => {
         const { xMin, yMin, xMax, yMax } = bBox;
         const width = (xMax - xMin) * scale;
         const height = (yMax - yMin) * scale;

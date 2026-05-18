@@ -69,6 +69,7 @@ import type {
 } from "../core/layout-bridge/selectionRects";
 // Layout bridge
 import { toFlowBlocks } from "../core/layout-bridge/toFlowBlocks";
+import type { ToFlowBlocksOptions } from "../core/layout-bridge/toFlowBlocks";
 // Layout engine
 import { layoutDocument } from "../core/layout-engine";
 import type { ColumnLayout, SectionLayoutConfig } from "../core/layout-engine";
@@ -80,6 +81,7 @@ import type {
   TableBlock,
   TableCell,
   TableMeasure,
+  TableCellMeasure,
   ImageBlock,
   ImageRun,
   PageMargins,
@@ -87,10 +89,7 @@ import type {
   TextBoxBlock,
   FootnoteContent,
 } from "../core/layout-engine/types";
-import {
-  DEFAULT_TEXTBOX_MARGINS,
-  DEFAULT_TEXTBOX_WIDTH,
-} from "../core/layout-engine/types";
+import { DEFAULT_TEXTBOX_MARGINS } from "../core/layout-engine/types";
 // Layout painter
 import { LayoutPainter } from "../core/layout-painter";
 import type { BlockLookup } from "../core/layout-painter";
@@ -105,6 +104,8 @@ import type {
 // Table commands (for quick-action insert buttons)
 import { addRowBelow, addColumnRight } from "../core/prosemirror";
 import type { ExtensionManager } from "../core/prosemirror/extensions/ExtensionManager";
+import { anonymizationDecorationsKey } from "../core/prosemirror/plugins/anonymizationDecorations";
+import type { AnonymizationMatch } from "../core/prosemirror/plugins/anonymizationDecorations";
 import type { Footnote } from "../core/types/content";
 // Types
 import type {
@@ -115,10 +116,17 @@ import type {
   HeaderFooter,
 } from "../core/types/document";
 import {
+  closestHtmlElement,
+  htmlQueryAll,
+  queryHtmlElement,
+} from "../core/utils/domGuards";
+// Internal components
+import { AnonymizationRectsOverlay } from "./AnonymizationRectsOverlay";
+import type { AnonymizationRectGroup } from "./AnonymizationRectsOverlay";
+import {
   computeFirstPageHeaderFooterMarginExtender,
   computeHeaderFooterMarginExtender,
 } from "./headerFooterMargins";
-// Internal components
 import { HiddenProseMirror } from "./HiddenProseMirror";
 import type { HiddenProseMirrorRef } from "./HiddenProseMirror";
 import { ImageSelectionOverlay } from "./ImageSelectionOverlay";
@@ -179,6 +187,21 @@ export type PagedEditorProps = {
   onReadOnlyEditAttempt?: () => void;
   /** Callback when selection changes. */
   onSelectionChange?: (from: number, to: number) => void;
+  /**
+   * Callback when the active text selection changes. Fires
+   * with the resolved PM positions and the selected plain
+   * text (atom inline nodes — tab, hard_break — are
+   * collapsed to a single space). Useful for consumers that
+   * want the selected phrase without having to hold a
+   * reference to the editor view themselves; fires on every
+   * selection-bearing transaction (caret moves, drag,
+   * word-select, programmatic `setSelection`).
+   */
+  onSelectionTextChange?: (selection: {
+    from: number;
+    to: number;
+    text: string;
+  }) => void;
   /** External ProseMirror plugins. */
   externalPlugins?: Plugin[];
   /** Extension manager for plugins/schema/commands (optional — falls back to default) */
@@ -221,6 +244,23 @@ export type PagedEditorProps = {
   onTotalPagesChange?: (totalPages: number) => void;
   /** Which mark anchors should be mapped for sidebars/margin markers. */
   anchorPositionMode?: "comments" | "comments-and-revisions";
+  /**
+   * Called when the user clicks an anonymization highlight in
+   * the rendered document. Receives the canonical surface form
+   * and label slug; the host wires this to the sidebar bridge.
+   */
+  onAnonymizationTermClick?:
+    | ((canonical: string, label: string) => void)
+    | undefined;
+  /**
+   * Canonical to highlight as "selected" in the overlay. The
+   * first matching rect scrolls into view whenever
+   * `anonymizationSelectionSeq` changes (so repeated sidebar
+   * clicks of the same term re-trigger the scroll).
+   */
+  selectedAnonymizationCanonical?: string | null | undefined;
+  /** Monotonic counter from the bridge store; drives the re-scroll. */
+  anonymizationSelectionSeq?: number | undefined;
 };
 
 export type PagedEditorRef = {
@@ -274,7 +314,7 @@ const DEFAULT_MARGINS: PageMargins = {
   left: 96,
 };
 
-const DEFAULT_PAGE_GAP = 24;
+export const DEFAULT_PAGE_GAP = 24;
 const COMMENTS_SIDEBAR_SCROLL_GUTTER = 304;
 
 /** Distance in px from a row/column boundary that triggers the insert button */
@@ -290,6 +330,30 @@ const SELECTION_REVEAL_AFTER_INPUT_DELAY = 120;
 // Stable empty array to avoid re-creating on each render
 const EMPTY_PLUGINS: Plugin[] = [];
 
+/**
+ * Get the zero-based page index for a node by climbing to its
+ * `.layout-page` ancestor and reading `data-page-number`. Returns
+ * 0 if no ancestor is found.
+ */
+const getPageIndex = (el: Element): number => {
+  const pageEl = closestHtmlElement(el, ".layout-page");
+  if (!pageEl) {
+    return 0;
+  }
+  const raw = pageEl.dataset["pageNumber"];
+  return raw ? Number(raw) - 1 : 0;
+};
+
+/**
+ * Get the line height for a node by climbing to its `.layout-line`
+ * ancestor and reading `offsetHeight`. Returns `fallback` if no
+ * ancestor is found.
+ */
+const getLineHeight = (el: Element, fallback = 16): number => {
+  const lineEl = closestHtmlElement(el, ".layout-line");
+  return lineEl ? lineEl.offsetHeight : fallback;
+};
+
 // =============================================================================
 // STYLES
 // =============================================================================
@@ -303,7 +367,7 @@ const containerStyles: CSSProperties = {
 };
 
 /** Padding above page content in the viewport div. */
-const VIEWPORT_PADDING_TOP = 24;
+export const VIEWPORT_PADDING_TOP = 24;
 
 const viewportStyles: CSSProperties = {
   position: "relative",
@@ -778,12 +842,11 @@ export function measureTableBlock(
         const padLeft = cell.padding?.left ?? DEFAULT_CELL_PADDING_X;
         const padRight = cell.padding?.right ?? DEFAULT_CELL_PADDING_X;
         const cellContentWidth = Math.max(1, cellWidth - padLeft - padRight);
-        const cellMeasure: import("../core/layout-engine/types").TableCellMeasure =
-          {
-            blocks: cell.blocks.map((b) => measureBlock(b, cellContentWidth)),
-            width: cellWidth,
-            height: 0, // Calculated below
-          };
+        const cellMeasure: TableCellMeasure = {
+          blocks: cell.blocks.map((b) => measureBlock(b, cellContentWidth)),
+          width: cellWidth,
+          height: 0, // Calculated below
+        };
         if (cell.colSpan !== undefined) {
           cellMeasure.colSpan = cell.colSpan;
         }
@@ -1004,7 +1067,7 @@ function extractFloatingZones(
         floating.tblpXSpec === "outside"
       ) {
         x = contentWidth - tableWidth;
-      } else if (floating.tblpXSpec === "center") {
+      } else {
         x = (contentWidth - tableWidth) / 2;
       }
     } else if (tableBlock.justification === "center") {
@@ -1082,16 +1145,15 @@ function measureBlock(
       const imageBlock = block as ImageBlock;
       return {
         kind: "image",
-        width: imageBlock.width ?? 100,
-        height: imageBlock.height ?? 100,
+        width: imageBlock.width,
+        height: imageBlock.height,
       };
     }
 
     case "textBox": {
       const tb = block as TextBoxBlock;
       const margins = tb.margins ?? DEFAULT_TEXTBOX_MARGINS;
-      const innerWidth =
-        (tb.width ?? DEFAULT_TEXTBOX_WIDTH) - margins.left - margins.right;
+      const innerWidth = tb.width - margins.left - margins.right;
       const innerMeasures = tb.content.map((p) =>
         measureParagraph(p, innerWidth),
       );
@@ -1103,7 +1165,7 @@ function measureBlock(
         tb.height ?? contentHeight + margins.top + margins.bottom;
       return {
         kind: "textBox" as const,
-        width: tb.width ?? DEFAULT_TEXTBOX_WIDTH,
+        width: tb.width,
         height: totalHeight,
         innerMeasures,
       };
@@ -1251,7 +1313,7 @@ function buildFootnoteRenderItems(
   doc: Document | null,
 ): Map<number, FootnoteRenderItem[]> {
   const result = new Map<number, FootnoteRenderItem[]>();
-  if (!doc?.package?.footnotes) {
+  if (!doc || !doc.package.footnotes) {
     return result;
   }
 
@@ -1324,6 +1386,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
       onDocumentChange,
       onReadOnlyEditAttempt,
       onSelectionChange,
+      onSelectionTextChange,
       externalPlugins = EMPTY_PLUGINS,
       extensionManager,
       onHeaderFooterDoubleClick,
@@ -1339,6 +1402,9 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
       onAnchorPositionsChange,
       onTotalPagesChange,
       anchorPositionMode = "comments-and-revisions",
+      onAnonymizationTermClick,
+      selectedAnonymizationCanonical = null,
+      anonymizationSelectionSeq,
     } = props;
 
     // Resolve the scroll container: prefer parent-provided ref, fallback to own container
@@ -1370,12 +1436,14 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
     // Store callbacks in refs to avoid infinite re-render loops
     // when parent passes unstable callback references
     const onSelectionChangeRef = useRef(onSelectionChange);
+    const onSelectionTextChangeRef = useRef(onSelectionTextChange);
     const onDocumentChangeRef = useRef(onDocumentChange);
     const onTotalPagesChangeRef = useRef(onTotalPagesChange);
     const lastTotalPagesRef = useRef<number | null>(null);
 
     // Keep refs in sync with latest props
     onSelectionChangeRef.current = onSelectionChange;
+    onSelectionTextChangeRef.current = onSelectionTextChange;
     onDocumentChangeRef.current = onDocumentChange;
     onTotalPagesChangeRef.current = onTotalPagesChange;
 
@@ -1393,6 +1461,13 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
     const [caretPosition, setCaretPosition] = useState<CaretPosition | null>(
       null,
     );
+    const [anonymizationRectGroups, setAnonymizationRectGroups] = useState<
+      AnonymizationRectGroup[]
+    >([]);
+    // Plain ref to the latest match list so the recompute effect
+    // doesn't depend on a state setter callback that would trigger
+    // its own re-run.
+    const anonymizationMatchesRef = useRef<readonly AnonymizationMatch[]>([]);
     const suppressSelectionOverlayRef = useRef(false);
     const revealSelectionOverlayTimerRef = useRef<number | null>(null);
 
@@ -1404,10 +1479,14 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
     /** Build ImageSelectionInfo from a DOM element with data-pm-start */
     const buildImageSelectionInfo = useCallback(
       (el: HTMLElement, pmPos: number): ImageSelectionInfo => {
-        const imgTag = el.tagName === "IMG" ? el : el.querySelector("img");
-        const rect = (imgTag ?? el).getBoundingClientRect();
+        const imgTagCandidate =
+          el.tagName === "IMG" ? el : el.querySelector("img");
+        const imgTag =
+          imgTagCandidate instanceof HTMLElement ? imgTagCandidate : null;
+        const element = imgTag ?? el;
+        const rect = element.getBoundingClientRect();
         return {
-          element: (imgTag ?? el) as HTMLElement,
+          element,
           pmPos,
           width: Math.round(rect.width / zoom),
           height: Math.round(rect.height / zoom),
@@ -1543,10 +1622,9 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
         try {
           // Step 1: Convert PM doc to flow blocks
           const pageContentHeight = pageSize.h - margins.top - margins.bottom;
-          const flowOpts: import("../core/layout-bridge/toFlowBlocks").ToFlowBlocksOptions =
-            {
-              pageContentHeight,
-            };
+          const flowOpts: ToFlowBlocksOptions = {
+            pageContentHeight,
+          };
           if (_theme !== undefined) {
             flowOpts.theme = _theme;
           }
@@ -1593,7 +1671,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
           // Step 2.5: Collect footnote references from blocks
           const footnoteRefs = collectFootnoteRefs(newBlocks);
           const hasFootnotes =
-            footnoteRefs.length > 0 && document?.package?.footnotes;
+            footnoteRefs.length > 0 && document?.package.footnotes;
 
           // Step 2.75: Prepare header/footer content for rendering (needed before layout
           // to compute effective margins when header content exceeds available space)
@@ -2019,20 +2097,11 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
           if (spanEl.classList.contains("layout-run-tab")) {
             if (pmPos >= pmStart && pmPos < pmEnd) {
               const spanRect = spanEl.getBoundingClientRect();
-              const pageEl = spanEl.closest(".layout-page");
-              const pageIndex = pageEl
-                ? Number((pageEl as HTMLElement).dataset["pageNumber"]) - 1
-                : 0;
-              const lineEl = spanEl.closest(".layout-line");
-              const lineHeight = lineEl
-                ? (lineEl as HTMLElement).offsetHeight
-                : 16;
-
               return {
                 x: (spanRect.left - overlayRect.left) / currentZoom,
                 y: (spanRect.top - overlayRect.top) / currentZoom,
-                height: lineHeight,
-                pageIndex,
+                height: getLineHeight(spanEl),
+                pageIndex: getPageIndex(spanEl),
               };
             }
             continue; // Skip to next span
@@ -2044,20 +2113,11 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
             pmPos <= pmEnd
           ) {
             const spanRect = spanEl.getBoundingClientRect();
-            const pageEl = spanEl.closest(".layout-page");
-            const pageIndex = pageEl
-              ? Number((pageEl as HTMLElement).dataset["pageNumber"]) - 1
-              : 0;
-            const lineEl = spanEl.closest(".layout-line");
-            const lineHeight = lineEl
-              ? (lineEl as HTMLElement).offsetHeight
-              : Math.max(16, spanRect.height);
-
             return {
               x: (spanRect.left - overlayRect.left) / currentZoom,
               y: (spanRect.top - overlayRect.top) / currentZoom,
-              height: lineHeight,
-              pageIndex,
+              height: getLineHeight(spanEl, Math.max(16, spanRect.height)),
+              pageIndex: getPageIndex(spanEl),
             };
           }
 
@@ -2072,9 +2132,6 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
 
             // Create a range at the exact character position
             const ownerDoc = spanEl.ownerDocument;
-            if (!ownerDoc) {
-              continue;
-            }
             const range = ownerDoc.createRange();
             range.setStart(textNode, charIndex);
             range.setEnd(textNode, charIndex);
@@ -2090,42 +2147,21 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
                 ? rangeRect.top
                 : spanRect.top;
 
-            // Find which page this span is on
-            const pageEl = spanEl.closest(".layout-page");
-            const pageIndex = pageEl
-              ? Number((pageEl as HTMLElement).dataset["pageNumber"]) - 1
-              : 0;
-
-            // Get line height from the line element or use default
-            const lineEl = spanEl.closest(".layout-line");
-            const lineHeight = lineEl
-              ? (lineEl as HTMLElement).offsetHeight
-              : 16;
-
             return {
               x: (caretLeft - overlayRect.left) / currentZoom,
               y: (caretTop - overlayRect.top) / currentZoom,
-              height: lineHeight,
-              pageIndex,
+              height: getLineHeight(spanEl),
+              pageIndex: getPageIndex(spanEl),
             };
           }
 
           if (pmPos >= pmStart && pmPos <= pmEnd) {
             const spanRect = spanEl.getBoundingClientRect();
-            const pageEl = spanEl.closest(".layout-page");
-            const pageIndex = pageEl
-              ? Number((pageEl as HTMLElement).dataset["pageNumber"]) - 1
-              : 0;
-            const lineEl = spanEl.closest(".layout-line");
-            const lineHeight = lineEl
-              ? (lineEl as HTMLElement).offsetHeight
-              : Math.max(16, spanRect.height);
-
             return {
               x: (spanRect.left - overlayRect.left) / currentZoom,
               y: (spanRect.top - overlayRect.top) / currentZoom,
-              height: lineHeight,
-              pageIndex,
+              height: getLineHeight(spanEl, Math.max(16, spanRect.height)),
+              pageIndex: getPageIndex(spanEl),
             };
           }
         }
@@ -2133,32 +2169,20 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
         // Fallback: try to find position in empty paragraphs (they have empty runs)
         const emptyRuns = findBodyEmptyRuns(pagesContainerRef.current);
         for (const emptyRun of emptyRuns) {
-          const paragraph = emptyRun.closest(
-            ".layout-paragraph",
-          ) as HTMLElement;
+          const paragraph = closestHtmlElement(emptyRun, ".layout-paragraph");
           if (!paragraph) {
             continue;
           }
-
           const pmStart = Number(paragraph.dataset["pmStart"]);
           const pmEnd = Number(paragraph.dataset["pmEnd"]);
 
           if (pmPos >= pmStart && pmPos <= pmEnd) {
             const runRect = emptyRun.getBoundingClientRect();
-            const pageEl = paragraph.closest(".layout-page");
-            const pageIndex = pageEl
-              ? Number((pageEl as HTMLElement).dataset["pageNumber"]) - 1
-              : 0;
-            const lineEl = emptyRun.closest(".layout-line");
-            const lineHeight = lineEl
-              ? (lineEl as HTMLElement).offsetHeight
-              : 16;
-
             return {
               x: (runRect.left - overlayRect.left) / currentZoom,
               y: (runRect.top - overlayRect.top) / currentZoom,
-              height: lineHeight,
-              pageIndex,
+              height: getLineHeight(emptyRun),
+              pageIndex: getPageIndex(paragraph),
             };
           }
         }
@@ -2178,6 +2202,18 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
         // Always notify selection change (for toolbar sync) even if layout not ready
         // Use ref to avoid infinite loops when callback is unstable
         onSelectionChangeRef.current?.(from, to);
+        // `onSelectionTextChange` carries the resolved text
+        // alongside the range so consumers (anonymisation
+        // term prefill, etc.) don't need to hold a reference
+        // to the editor view themselves. `textBetween` with
+        // a single space for both leaf-block and block
+        // separators collapses table cells, paragraphs, and
+        // inline atoms into a single-line phrase.
+        if (onSelectionTextChangeRef.current) {
+          const text =
+            from === to ? "" : state.doc.textBetween(from, to, " ", " ");
+          onSelectionTextChangeRef.current({ from, to, text });
+        }
 
         if (suppressSelectionOverlayRef.current) {
           setCaretPosition(null);
@@ -2208,16 +2244,17 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
             });
 
             // Find visible layout cells whose pmStart falls inside a selected cell range
-            const allCells =
-              pagesContainerRef.current.querySelectorAll(".layout-table-cell");
-            for (const cellEl of Array.from(allCells)) {
-              const htmlEl = cellEl as HTMLElement;
-              const pmStartAttr = htmlEl.dataset["pmStart"];
+            const allCells = htmlQueryAll(
+              pagesContainerRef.current,
+              ".layout-table-cell",
+            );
+            for (const cellEl of allCells) {
+              const pmStartAttr = cellEl.dataset["pmStart"];
               if (pmStartAttr !== undefined) {
                 const pmPos = Number(pmStartAttr);
                 for (const [start, end] of selectedRanges) {
                   if (pmPos >= start && pmPos < end) {
-                    htmlEl.classList.add("layout-table-cell-selected");
+                    cellEl.classList.add("layout-table-cell-selected");
                     break;
                   }
                 }
@@ -2287,17 +2324,12 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
                 // Special handling for tab spans - highlight the full visual width
                 if (spanEl.classList.contains("layout-run-tab")) {
                   const spanRect = spanEl.getBoundingClientRect();
-                  const pageEl = spanEl.closest(".layout-page");
-                  const pageIndex = pageEl
-                    ? Number((pageEl as HTMLElement).dataset["pageNumber"]) - 1
-                    : 0;
-
                   domRects.push({
                     x: (spanRect.left - overlayRect.left) / zoom,
                     y: (spanRect.top - overlayRect.top) / zoom,
                     width: spanRect.width / zoom,
                     height: spanRect.height / zoom,
-                    pageIndex,
+                    pageIndex: getPageIndex(spanEl),
                   });
                   continue;
                 }
@@ -2307,8 +2339,8 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
                 if (spanEl.firstChild?.nodeType === Node.TEXT_NODE) {
                   textNode = spanEl.firstChild as Text;
                 } else if (
-                  spanEl.firstChild?.nodeType === Node.ELEMENT_NODE &&
-                  (spanEl.firstChild as HTMLElement).tagName === "A" &&
+                  spanEl.firstChild instanceof HTMLElement &&
+                  spanEl.firstChild.tagName === "A" &&
                   spanEl.firstChild.firstChild?.nodeType === Node.TEXT_NODE
                 ) {
                   textNode = spanEl.firstChild.firstChild as Text;
@@ -2317,9 +2349,6 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
                   continue;
                 }
                 const ownerDoc = spanEl.ownerDocument;
-                if (!ownerDoc) {
-                  continue;
-                }
 
                 // Calculate the character range within this span
                 const startChar = Math.max(0, from - pmStart);
@@ -2332,13 +2361,8 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
 
                   // Get all client rects for this range (handles line wraps)
                   const clientRects = range.getClientRects();
+                  const pageIndex = getPageIndex(spanEl);
                   for (const rect of Array.from(clientRects)) {
-                    const pageEl = spanEl.closest(".layout-page");
-                    const pageIndex = pageEl
-                      ? Number((pageEl as HTMLElement).dataset["pageNumber"]) -
-                        1
-                      : 0;
-
                     domRects.push({
                       x: (rect.left - overlayRect.left) / zoom,
                       y: (rect.top - overlayRect.top) / zoom,
@@ -2391,6 +2415,125 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
       // NOTE: onSelectionChange removed from dependencies - accessed via ref to prevent infinite loops
     );
 
+    // Project anonymization match ranges onto container-space
+    // rectangles. Mirrors the SelectionOverlay flow: prefer real
+    // DOM rects from the painted page spans (correct for indents,
+    // tabs, justified text, line wraps) and fall back to the
+    // layout-coord projection only when the DOM spans aren't
+    // mounted yet (initial paint, off-screen pages). The hidden
+    // ProseMirror's spans are not used — they sit at -9999px and
+    // would yield bogus coordinates.
+    const updateAnonymizationOverlay = useCallback(() => {
+      const matches = anonymizationMatchesRef.current;
+      if (matches.length === 0) {
+        setAnonymizationRectGroups([]);
+        return;
+      }
+      const pagesContainer = pagesContainerRef.current;
+      if (!pagesContainer) {
+        setAnonymizationRectGroups([]);
+        return;
+      }
+      const overlay = pagesContainer.parentElement?.querySelector(
+        '[data-testid="selection-overlay"]',
+      );
+      const firstPage = pagesContainer.querySelector(".layout-page");
+      if (!overlay || !firstPage) {
+        setAnonymizationRectGroups([]);
+        return;
+      }
+      const overlayRect = overlay.getBoundingClientRect();
+      const pageRect = firstPage.getBoundingClientRect();
+      const pageOffsetX = (pageRect.left - overlayRect.left) / zoom;
+      const pageOffsetY = (pageRect.top - overlayRect.top) / zoom;
+      const pmSpans = findBodyPmSpans(pagesContainer);
+
+      const rectsForMatch = (
+        from: number,
+        to: number,
+      ): AnonymizationRectGroup["rects"] => {
+        const domRects: AnonymizationRectGroup["rects"] = [];
+        for (const spanEl of pmSpans) {
+          const pmStart = Number(spanEl.dataset["pmStart"]);
+          const pmEnd = Number(spanEl.dataset["pmEnd"]);
+          if (!(pmEnd > from && pmStart < to)) {
+            continue;
+          }
+          if (spanEl.classList.contains("layout-run-tab")) {
+            const spanRect = spanEl.getBoundingClientRect();
+            domRects.push({
+              x: (spanRect.left - overlayRect.left) / zoom,
+              y: (spanRect.top - overlayRect.top) / zoom,
+              width: spanRect.width / zoom,
+              height: spanRect.height / zoom,
+              pageIndex: getPageIndex(spanEl),
+            });
+            continue;
+          }
+          let textNode: Text | null = null;
+          if (spanEl.firstChild?.nodeType === Node.TEXT_NODE) {
+            textNode = spanEl.firstChild as Text;
+          } else if (
+            spanEl.firstChild instanceof HTMLElement &&
+            spanEl.firstChild.tagName === "A" &&
+            spanEl.firstChild.firstChild?.nodeType === Node.TEXT_NODE
+          ) {
+            textNode = spanEl.firstChild.firstChild as Text;
+          }
+          if (!textNode) {
+            continue;
+          }
+          const ownerDoc = spanEl.ownerDocument;
+          const startChar = Math.max(0, from - pmStart);
+          const endChar = Math.min(textNode.length, to - pmStart);
+          if (!(startChar < endChar)) {
+            continue;
+          }
+          const range = ownerDoc.createRange();
+          range.setStart(textNode, startChar);
+          range.setEnd(textNode, endChar);
+          const pageIndex = getPageIndex(spanEl);
+          for (const rect of Array.from(range.getClientRects())) {
+            domRects.push({
+              x: (rect.left - overlayRect.left) / zoom,
+              y: (rect.top - overlayRect.top) / zoom,
+              width: rect.width / zoom,
+              height: rect.height / zoom,
+              pageIndex,
+            });
+          }
+        }
+        if (domRects.length > 0) {
+          return domRects;
+        }
+        if (!layout || blocks.length === 0) {
+          return [];
+        }
+        return selectionToRects(layout, blocks, measures, from, to).map(
+          (rect) => ({
+            height: rect.height,
+            pageIndex: rect.pageIndex,
+            width: rect.width,
+            x: rect.x + pageOffsetX,
+            y: rect.y + pageOffsetY,
+          }),
+        );
+      };
+
+      const groups: AnonymizationRectGroup[] = [];
+      for (const match of matches) {
+        const rects = rectsForMatch(match.from, match.to);
+        if (rects.length > 0) {
+          groups.push({
+            rects,
+            label: match.label,
+            canonical: match.canonical,
+          });
+        }
+      }
+      setAnonymizationRectGroups(groups);
+    }, [layout, blocks, measures, zoom]);
+
     const hideSelectionOverlayDuringInput = useCallback(
       (state: EditorState) => {
         suppressSelectionOverlayRef.current = true;
@@ -2429,6 +2572,19 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
      */
     const handleTransaction = useCallback(
       (transaction: Transaction, newState: EditorState) => {
+        // Keep the anonymization match list mirrored in a ref so the
+        // overlay recompute reads the latest set without depending on
+        // a state setter inside its useCallback closure. We pull off
+        // the plugin's state on every transaction; if the matches
+        // identity changes (term meta or doc edit), schedule a paint.
+        const nextMatches =
+          anonymizationDecorationsKey.getState(newState)?.matches ?? [];
+        const matchesChanged = nextMatches !== anonymizationMatchesRef.current;
+        anonymizationMatchesRef.current = nextMatches;
+        if (matchesChanged) {
+          updateAnonymizationOverlay();
+        }
+
         if (transaction.docChanged) {
           // Increment state sequence to signal document changed
           syncCoordinator.incrementStateSeq();
@@ -2458,6 +2614,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
         scheduleDocumentChangeNotification,
         hideSelectionOverlayDuringInput,
         updateSelectionOverlay,
+        updateAnonymizationOverlay,
         syncCoordinator,
       ],
       // NOTE: onDocumentChange removed from dependencies - accessed via ref to prevent infinite loops
@@ -2842,7 +2999,8 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
         return false;
       }
 
-      if (!navigator.clipboard) {
+      // eslint-disable-next-line typescript/no-unnecessary-condition -- Clipboard API may be unavailable in older browsers or insecure contexts.
+      if (navigator.clipboard === undefined) {
         return false;
       }
 
@@ -2874,19 +3032,23 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
         setTableInsertButton(null);
         clearTableInsertTimer();
 
+        const target = e.target instanceof HTMLElement ? e.target : null;
+        if (!target) {
+          return;
+        }
+
         // Prevent default browser navigation for hyperlink clicks,
         // but let the rest of the handler run for cursor placement and drag selection.
         // The popup is shown in handlePagesClick (on mouseup) instead.
-        const anchorEl = (e.target as HTMLElement).closest(
-          "a[href]",
-        ) as HTMLAnchorElement | null;
+        const anchorClosest = target.closest("a[href]");
+        const anchorEl =
+          anchorClosest instanceof HTMLAnchorElement ? anchorClosest : null;
         if (anchorEl) {
           e.preventDefault(); // Prevent navigation only
         }
 
         // When in HF edit mode, clicks outside header/footer area close the HF editor
         if (!readOnly && hfEditMode && onBodyClick) {
-          const target = e.target as HTMLElement;
           const isInHfArea =
             target.closest(".layout-page-header") ||
             target.closest(".layout-page-footer") ||
@@ -2902,24 +3064,20 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
         // In normal mode, clicks in header/footer area should place cursor at
         // start of body content, not inside header/footer (matches Word/Google Docs)
         if (!readOnly && !hfEditMode) {
-          const target = e.target as HTMLElement;
           const isInHfArea =
             target.closest(".layout-page-header") ||
             target.closest(".layout-page-footer");
           if (isInHfArea) {
             e.preventDefault();
             // Place cursor at start of body content
-            if (hiddenPMRef.current) {
-              hiddenPMRef.current.setSelection(0);
-              hiddenPMRef.current.focus();
-              setIsFocused(true);
-            }
+            hiddenPMRef.current.setSelection(0);
+            hiddenPMRef.current.focus();
+            setIsFocused(true);
             return;
           }
         }
 
         // Column resize: intercept clicks on resize handles
-        const target = e.target as HTMLElement;
         if (
           !readOnly &&
           target.classList.contains("layout-table-resize-handle")
@@ -3001,19 +3159,9 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
             for (let d = $pos.depth; d >= 0; d--) {
               const node = $pos.node(d);
               if (node.type.name === "table") {
-                let rowNode: typeof node | null = null;
-                let idx = 0;
-                // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
-                node.forEach((child) => {
-                  if (idx === rowIndex) {
-                    rowNode = child;
-                  }
-                  idx++;
-                });
-                if (rowNode) {
-                  const height = (rowNode as typeof node).attrs["height"] as
-                    | number
-                    | null;
+                if (rowIndex < node.childCount) {
+                  const rowNode = node.child(rowIndex);
+                  const height = rowNode.attrs["height"] as number | null;
                   if (height) {
                     resizeRowOrigHeightRef.current = height;
                   } else {
@@ -3022,9 +3170,10 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
                     const rowEl = tableEl?.querySelector(
                       `[data-row-index="${rowIndex}"]`,
                     );
-                    const renderedHeight = rowEl
-                      ? (rowEl as HTMLElement).getBoundingClientRect().height
-                      : 30;
+                    const renderedHeight =
+                      rowEl instanceof HTMLElement
+                        ? rowEl.getBoundingClientRect().height
+                        : 30;
                     resizeRowOrigHeightRef.current = Math.round(
                       renderedHeight * 15,
                     );
@@ -3520,13 +3669,14 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
         const mouseY = e.clientY;
 
         // Find the table — either directly under the cursor or nearby (for edge hover)
-        let tableEl = (e.target as HTMLElement).closest(
-          ".layout-table",
-        ) as HTMLElement | null;
+        const eventTarget = e.target instanceof HTMLElement ? e.target : null;
+        let tableEl = eventTarget
+          ? closestHtmlElement(eventTarget, ".layout-table")
+          : null;
         if (!tableEl) {
           // Mouse may be in the margin area near a table — check all tables
-          const tables = pagesEl.querySelectorAll(".layout-table");
-          for (const t of Array.from(tables)) {
+          const tables = htmlQueryAll(pagesEl, ".layout-table");
+          for (const t of tables) {
             const r = t.getBoundingClientRect();
             const nearLeft =
               mouseX >= r.left - TABLE_INSERT_EDGE_PROXIMITY && mouseX < r.left;
@@ -3539,7 +3689,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
               mouseY >= r.top - TABLE_INSERT_EDGE_PROXIMITY &&
               mouseY <= r.bottom;
             if ((nearLeft && withinY) || (nearTop && withinX)) {
-              tableEl = t as HTMLElement;
+              tableEl = t;
               break;
             }
           }
@@ -3585,9 +3735,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
           for (const row of rows) {
             const rowRect = row.getBoundingClientRect();
             if (mouseY >= rowRect.top && mouseY <= rowRect.bottom) {
-              const cell = row.querySelector(
-                ".layout-table-cell",
-              ) as HTMLElement | null;
+              const cell = queryHtmlElement(row, ".layout-table-cell");
               const pmPos = getCellPmPos(cell);
               if (!pmPos) {
                 break;
@@ -3607,11 +3755,11 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         // Show button centered on the hovered column (top edge hover)
         if (nearTopEdge && rows[0]) {
-          const cells = rows[0].querySelectorAll(":scope > .layout-table-cell");
+          const cells = htmlQueryAll(rows[0], ":scope > .layout-table-cell");
           for (const cellEl of cells) {
             const cellRect = cellEl.getBoundingClientRect();
             if (mouseX >= cellRect.left && mouseX <= cellRect.right) {
-              const pmPos = getCellPmPos(cellEl as HTMLElement);
+              const pmPos = getCellPmPos(cellEl);
               if (!pmPos) {
                 break;
               }
@@ -3681,10 +3829,14 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
      */
     const handlePagesClick = useCallback(
       (e: React.MouseEvent) => {
+        const target = e.target instanceof HTMLElement ? e.target : null;
+        if (!target) {
+          return;
+        }
         // Handle hyperlink clicks (single-click only, not drag-to-select)
-        const anchorEl = (e.target as HTMLElement).closest(
-          "a[href]",
-        ) as HTMLAnchorElement | null;
+        const anchorClosest = target.closest("a[href]");
+        const anchorEl =
+          anchorClosest instanceof HTMLAnchorElement ? anchorClosest : null;
         if (anchorEl) {
           e.preventDefault();
           const href = anchorEl.getAttribute("href") || "";
@@ -3694,9 +3846,9 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
             if (bookmarkName && hiddenPMRef.current) {
               const view = hiddenPMRef.current.getView();
               if (view) {
-                let targetPos: number | null = null;
+                const targetPos = { value: null as number | null };
                 view.state.doc.descendants((node, pos) => {
-                  if (targetPos !== null) {
+                  if (targetPos.value !== null) {
                     return false;
                   }
                   if (node.type.name === "paragraph") {
@@ -3704,14 +3856,14 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
                       | { id: number; name: string }[]
                       | undefined;
                     if (bookmarks?.some((b) => b.name === bookmarkName)) {
-                      targetPos = pos;
+                      targetPos.value = pos;
                       return false;
                     }
                   }
                   return undefined;
                 });
-                if (targetPos !== null) {
-                  const tp: number = targetPos;
+                if (targetPos.value !== null) {
+                  const tp = targetPos.value;
                   scrollToPositionImpl(tp);
                   hiddenPMRef.current.setSelection(tp + 1);
                 }
@@ -3741,13 +3893,10 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         // Double-click on header/footer area triggers editing mode
         if (!readOnly && e.detail === 2 && onHeaderFooterDoubleClick) {
-          const target = e.target as HTMLElement;
           const headerEl = target.closest(".layout-page-header");
           const footerEl = target.closest(".layout-page-footer");
           if (headerEl || footerEl) {
-            const pageEl = target.closest(
-              "[data-page-number]",
-            ) as HTMLElement | null;
+            const pageEl = closestHtmlElement(target, "[data-page-number]");
             const pageNum = pageEl ? Number(pageEl.dataset["pageNumber"]) : 1;
             if (headerEl) {
               e.preventDefault();
@@ -3783,22 +3932,49 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
               const $pos = doc.resolve(pmPos);
               const parent = $pos.parent;
 
-              // Find word boundaries
+              // Find word boundaries.
               if (parent.isTextblock) {
-                const text = parent.textContent;
+                // Build a string aligned 1-to-1 with PM
+                // offsets inside the parent. Atom inline
+                // nodes (tab, hard_break, image) take 1 PM
+                // position but don't appear in
+                // `textContent`, so a tab at offset 0 +
+                // text "(a)" + tab at offset 4 + text
+                // "Equity Financing" has parentSize 21
+                // but textContent length 19. Walking
+                // word boundaries on `textContent` and
+                // then writing back via `$pos.start() +
+                // offset` shifts the resulting selection
+                // by one PM position per atom skipped —
+                // double-clicking "Financing" in such a
+                // paragraph selected "y Financin"
+                // instead. Padding atom nodes with a
+                // non-word character keeps every offset
+                // in PM-position space.
+                const pmAlignedParts: string[] = [];
+                for (let i = 0; i < parent.content.childCount; i++) {
+                  const node = parent.content.child(i);
+                  pmAlignedParts.push(
+                    node.isText ? (node.text ?? "") : " ".repeat(node.nodeSize),
+                  );
+                }
+                const pmAlignedText = pmAlignedParts.join("");
                 const offset = $pos.parentOffset;
 
                 // Find word start (go back until whitespace/punctuation)
                 let start = offset;
-                while (start > 0 && /\w/.test(text[start - 1]!)) {
+                while (start > 0 && /\w/.test(pmAlignedText[start - 1]!)) {
                   // SAFETY: start > 0
                   start--;
                 }
 
                 // Find word end (go forward until whitespace/punctuation)
                 let end = offset;
-                while (end < text.length && /\w/.test(text[end]!)) {
-                  // SAFETY: end < text.length
+                while (
+                  end < pmAlignedText.length &&
+                  /\w/.test(pmAlignedText[end]!)
+                ) {
+                  // SAFETY: end < pmAlignedText.length
                   end++;
                 }
 
@@ -3884,8 +4060,10 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
     const handleContainerFocus = useCallback(
       (e: React.FocusEvent) => {
         // Don't steal focus from sidebar inputs (textareas, inputs, buttons)
-        const target = e.target as HTMLElement;
-        if (target.closest(".docx-comments-sidebar")) {
+        if (
+          e.target instanceof HTMLElement &&
+          e.target.closest(".docx-comments-sidebar")
+        ) {
           return;
         }
         focusHiddenEditor();
@@ -3898,7 +4076,8 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
      */
     const handleContainerBlur = useCallback((e: React.FocusEvent) => {
       // Check if focus is moving to hidden PM or staying within container
-      const relatedTarget = e.relatedTarget as HTMLElement | null;
+      const relatedTarget =
+        e.relatedTarget instanceof HTMLElement ? e.relatedTarget : null;
       if (relatedTarget && containerRef.current?.contains(relatedTarget)) {
         return; // Focus staying within editor
       }
@@ -3997,17 +4176,16 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
             for (const page of pages) {
               const rect = page.getBoundingClientRect();
               if (clientY >= rect.top && clientY <= rect.bottom) {
-                contentEl = page.querySelector(
-                  ".layout-page-content",
-                ) as HTMLElement;
+                contentEl = queryHtmlElement(page, ".layout-page-content");
                 break;
               }
             }
             if (!contentEl) {
               // Fallback to last page if below all pages
-              contentEl = Array.from(pages)
-                .at(-1)
-                ?.querySelector(".layout-page-content") as HTMLElement;
+              const lastPage = Array.from(pages).at(-1);
+              contentEl = lastPage
+                ? queryHtmlElement(lastPage, ".layout-page-content")
+                : null;
             }
             if (!contentEl) {
               return;
@@ -4087,9 +4265,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
           (e.metaKey || e.ctrlKey) &&
           e.key.toLowerCase() === "c"
         ) {
-          if (copySelectionText()) {
-            e.preventDefault();
-          }
+          copySelectionText();
           return;
         }
 
@@ -4180,7 +4356,10 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
     const handleContainerMouseDown = useCallback(
       (e: React.MouseEvent) => {
         // Don't steal focus from sidebar inputs
-        if ((e.target as HTMLElement).closest(".docx-comments-sidebar")) {
+        if (
+          e.target instanceof HTMLElement &&
+          e.target.closest(".docx-comments-sidebar")
+        ) {
           return;
         }
         // Focus hidden PM if clicking outside pages area
@@ -4202,6 +4381,9 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
       (view: EditorView) => {
         runLayoutPipeline(view.state);
         updateSelectionOverlay(view.state);
+        anonymizationMatchesRef.current =
+          anonymizationDecorationsKey.getState(view.state)?.matches ?? [];
+        updateAnonymizationOverlay();
 
         // Auto-focus the editor so the user can start typing immediately
         if (!readOnly) {
@@ -4212,8 +4394,20 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
           });
         }
       },
-      [runLayoutPipeline, updateSelectionOverlay, readOnly],
+      [
+        runLayoutPipeline,
+        updateSelectionOverlay,
+        updateAnonymizationOverlay,
+        readOnly,
+      ],
     );
+
+    // Re-paint anonymization overlay whenever a fresh layout lands;
+    // selectionToRects needs the latest layout/blocks/measures to
+    // place rectangles correctly after a doc edit or zoom change.
+    useEffect(() => {
+      updateAnonymizationOverlay();
+    }, [updateAnonymizationOverlay]);
 
     // Re-layout when web fonts finish loading to fix measurements that were
     // computed against fallback fonts during initial render.
@@ -4440,7 +4634,7 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
           onEditorViewReady={handleEditorViewReady}
           onKeyDown={handlePMKeyDown}
           {...(styles !== undefined ? { styles } : {})}
-          {...(externalPlugins !== undefined ? { externalPlugins } : {})}
+          externalPlugins={externalPlugins}
           {...(extensionManager !== undefined ? { extensionManager } : {})}
           {...(onReadOnlyEditAttempt !== undefined
             ? { onReadOnlyEditAttempt }
@@ -4463,6 +4657,17 @@ const PagedEditorComponent = forwardRef<PagedEditorRef, PagedEditorProps>(
               onClick={handlePagesClick}
               onContextMenu={handlePagesContextMenu}
               aria-hidden="true" // Visual only, PM provides semantic content
+            />
+
+            {/* Anonymization highlights — paints on top of the
+                rendered pages so PII spans the wasm pipeline would
+                redact are visible inline. Always mounted, renders
+                nothing when no terms are pushed. */}
+            <AnonymizationRectsOverlay
+              groups={anonymizationRectGroups}
+              onTermClick={onAnonymizationTermClick}
+              selectedCanonical={selectedAnonymizationCanonical}
+              selectionSeq={anonymizationSelectionSeq}
             />
 
             {/* Selection overlay */}

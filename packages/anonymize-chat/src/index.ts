@@ -32,16 +32,28 @@ export const DEFAULT_CHAT_ANON_ENTITY_LABELS = [
   "iban",
   "tax identification number",
   "identity card number",
+  "birth number",
+  "national identification number",
+  "social security number",
   "registration number",
   "credit card number",
   "passport number",
   "monetary amount",
   "land parcel",
+  "misc",
 ] as const;
 
 export type ChatAnonPair = {
   placeholder: string;
   original: string;
+  /**
+   * Entity label as emitted by the pipeline (e.g. "person",
+   * "organization", "phone number"). Same vocabulary as
+   * {@link DEFAULT_CHAT_ANON_ENTITY_LABELS}. Consumers that need
+   * to colour or group by entity type read this directly instead
+   * of parsing the placeholder string.
+   */
+  label: string;
 };
 
 export type ChatAnonResult = {
@@ -133,45 +145,93 @@ export const isThirdPartyBoundaryRefusalError = (error: Error): boolean =>
 export type ChatAnonRuntime = {
   createPipelineContext: typeof createPipelineContext;
   defaultOperatorConfig: typeof DEFAULT_OPERATOR_CONFIG;
+  preparePipelineSearch?: (input: {
+    config: PipelineConfig;
+    context: PipelineContext;
+    gazetteerEntries: GazetteerEntry[];
+  }) => Promise<unknown>;
   redactText: typeof redactText;
   runPipeline: typeof runPipeline;
 };
 
+type ScopedPipelineConfig = PipelineConfig & {
+  nameCorpusLanguages?: string[];
+};
+
+export const normalizeChatAnonLocaleLanguage = (
+  locale: string | undefined,
+): string | null => {
+  const [languagePart] = locale?.split(/[-_]/u) ?? [];
+  const language = languagePart?.trim().toLowerCase();
+  return language && /^[a-z]{2}$/u.test(language) ? language : null;
+};
+
 export const buildChatAnonPipelineConfig = ({
   hasGazetteer,
+  locale,
   workspaceId,
 }: {
   hasGazetteer: boolean;
+  locale?: string | undefined;
   workspaceId: string;
-}): PipelineConfig => ({
-  threshold: 0.4,
-  enableTriggerPhrases: true,
-  enableRegex: true,
-  enableNameCorpus: true,
-  enableDenyList: false,
-  enableGazetteer: hasGazetteer,
-  enableNer: false,
-  enableConfidenceBoost: false,
-  enableCoreference: true,
-  enableLegalForms: true,
-  labels: [...DEFAULT_CHAT_ANON_ENTITY_LABELS],
-  workspaceId,
-});
+}): ScopedPipelineConfig => {
+  const nameCorpusLanguage = normalizeChatAnonLocaleLanguage(locale);
+  const config: ScopedPipelineConfig = {
+    threshold: 0.4,
+    enableTriggerPhrases: true,
+    enableRegex: true,
+    enableNameCorpus: true,
+    enableDenyList: false,
+    enableGazetteer: hasGazetteer,
+    enableNer: false,
+    enableConfidenceBoost: false,
+    enableCoreference: true,
+    enableLegalForms: true,
+    labels: [...DEFAULT_CHAT_ANON_ENTITY_LABELS],
+    workspaceId,
+  };
+  if (nameCorpusLanguage !== null) {
+    config.nameCorpusLanguages = [nameCorpusLanguage];
+  }
+  return config;
+};
+
+/**
+ * Fold a surface form to its comparison key for the
+ * excluded-canonicals filter. Mirrors Folio's
+ * decoration matcher: NFKC + lowercase, with runs of
+ * whitespace collapsed so "Acme  Corp" and "Acme Corp"
+ * collide.
+ */
+const normalizeForExclusion = (value: string): string =>
+  value.normalize("NFKC").toLowerCase().replaceAll(/\s+/g, " ").trim();
 
 export const runChatAnonPipeline = async ({
   context: providedContext,
   dictionaries,
+  excludedCanonicals,
   gazetteerEntries = [],
   runtime,
   text,
+  locale,
   workspaceId,
 }: {
   runtime: ChatAnonRuntime;
   dictionaries: NonNullable<PipelineConfig["dictionaries"]>;
   text: string;
+  locale?: string | undefined;
   workspaceId: string;
   gazetteerEntries?: GazetteerEntry[] | undefined;
   context?: PipelineContext | undefined;
+  /**
+   * Surface forms the caller has marked as never-anonymize.
+   * After the pipeline runs, any entity whose normalized text
+   * matches one of these (NFKC + lowercase, collapsed whitespace)
+   * is dropped before the redaction step, so the placeholder
+   * counter stays continuous and the original text passes
+   * through unchanged.
+   */
+  excludedCanonicals?: readonly string[] | undefined;
 }): Promise<ChatAnonResult> => {
   if (text.trim().length === 0) {
     return {
@@ -183,26 +243,58 @@ export const runChatAnonPipeline = async ({
   }
 
   const context = providedContext ?? runtime.createPipelineContext();
-  const entities: Entity[] = await runtime.runPipeline({
+  const config = {
+    ...buildChatAnonPipelineConfig({
+      hasGazetteer: gazetteerEntries.length > 0,
+      locale,
+      workspaceId,
+    }),
+    dictionaries,
+  };
+  await runtime.preparePipelineSearch?.({
+    config,
+    context,
+    gazetteerEntries,
+  });
+  const rawEntities: Entity[] = await runtime.runPipeline({
     fullText: text,
-    config: {
-      ...buildChatAnonPipelineConfig({
-        hasGazetteer: gazetteerEntries.length > 0,
-        workspaceId,
-      }),
-      dictionaries,
-    },
+    config,
     gazetteerEntries,
     context,
   });
+  const excludedSet =
+    excludedCanonicals && excludedCanonicals.length > 0
+      ? new Set(excludedCanonicals.map(normalizeForExclusion))
+      : null;
+  const entities: Entity[] =
+    excludedSet === null
+      ? rawEntities
+      : rawEntities.filter(
+          (entity) => !excludedSet.has(normalizeForExclusion(entity.text)),
+        );
   const result: RedactionResult = runtime.redactText(
     text,
     entities,
     runtime.defaultOperatorConfig,
     context,
   );
+  // Index entities by their surface text so each placeholder
+  // can carry the originating entity's label out to consumers.
+  // Same text + same label maps to the same placeholder by the
+  // wasm operator config, so a Map keyed on the entity text is
+  // enough to recover the label per pair.
+  const labelByOriginal = new Map<string, string>();
+  for (const entity of entities) {
+    if (!labelByOriginal.has(entity.text)) {
+      labelByOriginal.set(entity.text, entity.label);
+    }
+  }
   const pairs: ChatAnonPair[] = [...result.redactionMap.entries()].map(
-    ([placeholder, original]) => ({ placeholder, original }),
+    ([placeholder, original]) => ({
+      placeholder,
+      original,
+      label: labelByOriginal.get(original) ?? "misc",
+    }),
   );
 
   return {
